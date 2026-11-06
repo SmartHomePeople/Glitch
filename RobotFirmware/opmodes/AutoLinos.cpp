@@ -3,7 +3,7 @@ static HexaDCMotor leftMotor{{.dirPin = MOTOR_L_DIR, .pwmPin = MOTOR_L_PWM, .fli
 static HexaDCMotor rightMotor{{.dirPin = MOTOR_R_DIR, .pwmPin = MOTOR_R_PWM,
 
                                .minDrive = 32}};
-static TankDrve drive(leftMotor, rightMotor);
+static TankDrive drive(leftMotor, rightMotor);
 static HexaLineArray line{hexaLineConfig()};
 static LineActions lineActions(drive, line);
 class FirstJunction : public NRLOpMode

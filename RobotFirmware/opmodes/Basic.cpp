@@ -35,7 +35,7 @@ public:
         // both. Actions run before loop() each tick, so loop() would
         // overwrite them. To share one part, step aside while a
         // sequence plays:  if (!isActionRunning()) { ... }
-        drive.setScale(0.35f); // slow while LB held 
+        drive.setScale(gamepad1.pressed(BTN_LB) ? 0.35f : 1.0f); // slow while LB held
         drive.drive(rightX, leftY);
         if (gamepad1.justPressed(BTN_RB)){
             gripper.setPosition(gripper.getPosition() == 95 ? 30 : 95);
