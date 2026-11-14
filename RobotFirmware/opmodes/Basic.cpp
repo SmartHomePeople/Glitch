@@ -1,64 +1,170 @@
+// =====================================================================
+//  GLITCHED (Team 190) - driver-controlled OpMode
+//  File: RobotFirmware/opmodes/Basic.cpp
+//
+//  Controller map (gamepad1):
+//    Left stick up/down ... drive forward / backward
+//    Right stick left/right  turn
+//    Right stick up/down ... move the arm
+//    RB ................... toggle TURBO mode
+//    LB ................... toggle EXTREME PRECISION mode
+//    A (HOME) ............. toggle the gripper open / closed on a CORE
+//    D-pad UP ............. EMERGENCY STOP (latched, see below)
+//    LT toggle ............ engine exit / stop (handled by the engine, not remapped here)
+//
+//  Drive modes (RB and LB are mutually exclusive; press again to go back to NORMAL)
+//    NORMAL   75% top speed, soft centre (more precise than before)
+//    TURBO    100% top speed, linear response
+//    PRECISE  30% top speed, very soft centre
+//
+//  Emergency stop: D-pad UP freezes the robot. The motors stop, all other
+//  inputs are ignored, and the arm and gripper stay exactly where they are.
+//  It stays latched until the OpMode is stopped and started again.
+//
+//  STATUS: not yet compiled or run on the robot.
+// =====================================================================
 #include "NRL.h"
 
-// Declare your hardware here (file-scope), e.g.:
-// static HexaDCMotor leftMotor {{ .dirPin = MOTOR_L_DIR, .pwmPin = MOTOR_L_PWM }};
-static HexaDCMotor leftMotor{{ .dirPin = MOTOR_L_DIR, .pwmPin = MOTOR_L_PWM}};
+static HexaDCMotor leftMotor{{ .dirPin = MOTOR_L_DIR, .pwmPin = MOTOR_L_PWM }};
 static HexaDCMotor rightMotor{{ .dirPin = MOTOR_R_DIR, .pwmPin = MOTOR_R_PWM }};
-static HexaServo arm{{.signalPin=SERVO_1, .startAngle = 90.0f, .settleMs = 0}};
-static HexaServo gripper{{.signalPin=SERVO_2, .startAngle = 90.0f, .settleMs = 0}};
 static TankDrive drive(leftMotor, rightMotor);
 
-class Basic : public NRLOpMode {
+// ---------------------------------------------------------------------
+//  Arm and gripper angles (measured with SERVO TEST; a LOWER gripper angle is open)
+// ---------------------------------------------------------------------
+constexpr float ARM_START   = 110.0f;   // stowed pose, robot fits the start box
+constexpr float ARM_MIN_DEG =  85.0f;   // arm up (carry)
+constexpr float ARM_MAX_DEG = 140.0f;   // arm down (floor level) - do not go past this
+constexpr float ARM_STEP    =   1.0f;   // degrees per 10 ms tick at full stick
+
+constexpr float GRIP_OPEN   =   5.0f;   // open: the gripper STARTS here
+constexpr float GRIP_CORE   =  65.0f;   // closed on a CORE: firm hold without pushing against the servo limit
+constexpr float GRIP_DEG_S  = 150.0f;   // closing speed in degrees per second: gentle on the CORE and the servo
+constexpr float ARM_DEG_S   = 120.0f;
+
+// settleMs = 0: the servos HOLD their angle. The gripper starts open and the arm starts
+// stowed, so INIT does not sweep anything (R8.11). No setPosition() calls are needed in init().
+static HexaServo arm{{ .signalPin = SERVO_1, .startAngle = ARM_START, .settleMs = 0 }};
+static HexaServo gripper{{ .signalPin = SERVO_2, .startAngle = GRIP_OPEN, .settleMs = 0 }};
+
+// ---------------------------------------------------------------------
+//  Drive modes
+// ---------------------------------------------------------------------
+enum DriveMode { MODE_NORMAL, MODE_TURBO, MODE_PRECISE };
+
+struct ModeSettings
+{
+    const char *name;
+    float scale;       // top speed as a fraction of full power
+    float expo;        // 0 = linear stick, 1 = fully cubic (very soft near the centre)
+    float ramp;        // how fast motor commands may change per tick
+};
+
+static const ModeSettings MODES[] = {
+    {"NORMAL",  0.75f, 0.5f, 0.20f},
+    {"TURBO",   1.00f, 0.0f, 0.30f},
+    {"PRECISE", 0.30f, 0.8f, 0.12f},
+};
+
+constexpr float DEADBAND = 0.05f;   // ignore tiny stick drift
+
+// Soft centre: blends the stick with its cube, so small pushes give small speeds
+// and full deflection still gives full speed.
+static float shape(float x, float expo)
+{
+    if (fabsf(x) < DEADBAND) return 0.0f;
+    return (1.0f - expo) * x + expo * x * x * x;
+}
+
+class Basic : public NRLOpMode
+{
 public:
-    float rightY, rightX, leftX, leftY;
-    float angle_arm = 90;
-    void init() override {
-        // Runs once when INIT is pressed — begin() your hardware here.
+    void init() override
+    {
         leftMotor.begin();
         rightMotor.begin();
+        arm.setRampRate(ARM_DEG_S);
+        gripper.setRampRate(GRIP_DEG_S);
         arm.begin();
         gripper.begin();
-        arm.setPosition(90);
-        gripper.setPosition(95);
+        applyMode(MODE_NORMAL);
     }
 
-    void loop() override {
-        rightY = gamepad1.rightY();
-        leftX = gamepad1.leftX();
-        rightX = -gamepad1.rightX();
-        leftY = -gamepad1.leftY();
+    void start() override
+    {
+        estop       = false;
+        gripClosed  = false;      // the gripper starts OPEN
+        armAngle    = ARM_START;
+        applyMode(MODE_NORMAL);
+    }
 
+    void loop() override
+    {
+        // Emergency stop: latched. The motors are held at zero, nothing else is commanded,
+        // so the arm and gripper stay exactly where they were.
+        if (gamepad1.justPressed(BTN_DPAD_UP)) estop = true;
+        if (estop)
+        {
+            drive.stop();
+            telemetry.addData("STATE", "E-STOP");
+            return;
+        }
 
-        // Runs at 100 Hz until STOP — read gamepad1, drive motor¨s here.
+        // RB and LB toggle between their mode and NORMAL.
+        if (gamepad1.justPressed(BTN_RB)) applyMode(mode == MODE_TURBO ? MODE_NORMAL : MODE_TURBO);
+        if (gamepad1.justPressed(BTN_LB)) applyMode(mode == MODE_PRECISE ? MODE_NORMAL : MODE_PRECISE);
+
+        // Drive: left stick up/down = forward/back, right stick left/right = turn.
         //
-        // Control each part in ONE place: loop() or an action, not
-        // both. Actions run before loop() each tick, so loop() would
-        // overwrite them. To share one part, step aside while a
-        // sequence plays:  if (!isActionRunning()) { ... }
-        drive.setScale(gamepad1.pressed(BTN_LB) ? 0.35f : 1.0f); // slow while LB held
-        drive.drive(rightX, leftY);
-        if (gamepad1.justPressed(BTN_RB)){
-            gripper.setPosition(gripper.getPosition() == 95 ? 30 : 95);
-        }
-        angle_arm += rightY;
-        if (angle_arm < 90){
-            angle_arm = 90;
-        }else if (angle_arm > 180){
-            angle_arm = 180;
-        }
-        arm.setPosition(angle_arm);
-        telemetry.addData("right X", rightX);
-        telemetry.addData("left X", leftX);
-        telemetry.addData("right Y", rightY);
-        telemetry.addData("left Y", leftY);
+        // NOTE: the arguments go into drive() in the opposite order to the SDK's
+        // drive(forward, turn), exactly as in the original Basic.cpp. That order and these
+        // signs were set from the robot: after testing, left/right was correct and forward
+        // was inverted, so only the forward sign changed. If the motors are rewired or
+        // `flipped` is set later, this will need re-checking.
+        const ModeSettings &m = MODES[mode];
+        const float turnStick = shape(gamepad1.rightX(), m.expo);
+        const float fwdStick  = shape(gamepad1.leftY(), m.expo);   // was -leftY; flipped to fix inverted forward
+        drive.drive(turnStick, fwdStick);
 
+        // Gripper: one press closes on the CORE, the next press opens. Calling
+        // setPosition() every tick lets the ramp close it gently.
+        if (gamepad1.justPressed(BTN_A)) gripClosed = !gripClosed;
+        gripper.setPosition(gripClosed ? GRIP_CORE : GRIP_OPEN);
+
+        // Arm: the stick moves the target angle, which is kept inside the safe range.
+        const float rightY = gamepad1.rightY();   // was -rightY; flipped because stick up moved the arm down
+        if (fabsf(rightY) > DEADBAND) armAngle += rightY * ARM_STEP;
+        if (armAngle < ARM_MIN_DEG) armAngle = ARM_MIN_DEG;
+        if (armAngle > ARM_MAX_DEG) armAngle = ARM_MAX_DEG;
+        arm.setPosition(armAngle);
+
+        telemetry.addData("mode", m.name);
+        telemetry.addData("grip", gripClosed ? "CLOSED" : "OPEN");
+        telemetry.addData("arm", armAngle);
+        telemetry.addData("fwd", fwdStick);
+        telemetry.addData("turn", turnStick);
     }
 
-    void stop() override {
+    void stop() override
+    {
         rightMotor.stop();
         leftMotor.stop();
         arm.detach();
- }
+        gripper.detach();
+    }
+
+private:
+    void applyMode(DriveMode m)
+    {
+        mode = m;
+        drive.setScale(MODES[m].scale);
+        drive.setRampRate(MODES[m].ramp);
+    }
+
+    DriveMode mode       = MODE_NORMAL;
+    bool      estop      = false;
+    bool      gripClosed = false;
+    float     armAngle   = ARM_START;
 };
 
 REGISTER_OPMODE(Basic, "Basic", TELEOP);
