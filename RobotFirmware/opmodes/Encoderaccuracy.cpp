@@ -64,6 +64,7 @@ static TankDrive drive(leftMotor, rightMotor);
 // ---------------------------------------------------------------------
 constexpr int   LEFT_ENC_PIN   = DIGITAL_6;    // left-side encoder channel A  (D6, GPIO36)
 constexpr int   RIGHT_ENC_PIN  = DIGITAL_7;    // right-side encoder channel A (D7, GPIO37)
+constexpr bool  USE_PULLUP     = false;         // internal pull-up on the encoder inputs (see init)
 constexpr float FWD_SIGN       = 1.0f;         // set to -1.0f if the robot drives backward
 constexpr float TRIAL_DIST_M   = 1.0f;         // length of the hand-push course
 constexpr float COUNTS_PER_M   = 1000.0f;      // TUNE: placeholder used until you log trials
@@ -102,6 +103,12 @@ static void zeroCounts()
     leftCount  = 0;
     rightCount = 0;
 }
+
+// Wiring diagnostic: the raw pin level, read directly (no interrupts). If a level
+// changes here while a wheel turns but the counts stay 0, the problem is the interrupt
+// code. If the level never changes, the problem is wiring or encoder power.
+static int      pollLastL = 0, pollLastR = 0;
+static uint32_t pollChangesL = 0, pollChangesR = 0;
 
 // ---------------------------------------------------------------------
 //  Trial log (hand push)
@@ -207,8 +214,12 @@ public:
     {
         leftMotor.begin();
         rightMotor.begin();
-        pinMode(LEFT_ENC_PIN, INPUT);     // the encoder drives the pin, so no internal pull
-        pinMode(RIGHT_ENC_PIN, INPUT);
+        // INPUT_PULLUP is harmless if the encoder output is push-pull, and required if it is
+        // open-collector. Set USE_PULLUP to false to test with a plain input.
+        pinMode(LEFT_ENC_PIN, USE_PULLUP ? INPUT_PULLUP : INPUT);
+        pinMode(RIGHT_ENC_PIN, USE_PULLUP ? INPUT_PULLUP : INPUT);
+        pollLastL = digitalRead(LEFT_ENC_PIN);
+        pollLastR = digitalRead(RIGHT_ENC_PIN);
         attachInterrupt(digitalPinToInterrupt(LEFT_ENC_PIN), leftIsr, RISING);
         attachInterrupt(digitalPinToInterrupt(RIGHT_ENC_PIN), rightIsr, RISING);
     }
@@ -224,6 +235,16 @@ public:
     void loop() override
     {
         const bool busy = isActionRunning();
+
+        // Raw level polling (diagnostic only; the real counting is done by the interrupts).
+        const int lvlL = digitalRead(LEFT_ENC_PIN);
+        const int lvlR = digitalRead(RIGHT_ENC_PIN);
+        if (lvlL != pollLastL) { pollChangesL++; pollLastL = lvlL; }
+        if (lvlR != pollLastR) { pollChangesR++; pollLastR = lvlR; }
+        telemetry.addData("L pin level", (float)lvlL);
+        telemetry.addData("R pin level", (float)lvlR);
+        telemetry.addData("L level changes", (float)pollChangesL);
+        telemetry.addData("R level changes", (float)pollChangesR);
 
         // Y: clear the trial log and stop everything.
         if (gamepad1.justPressed(BTN_Y))
