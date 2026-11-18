@@ -28,8 +28,8 @@
 //   5  Press A for four 90 degree turns in a row (a square). Compare where the robot
 //      ends up with where it started, and with "free heading total" (about +/-360).
 //
-//  CONTROLS   D-pad RIGHT = turn +90 (clockwise)     D-pad LEFT = turn -90
-//             A = four turns of +90                  X = zero the counts and the averages
+//  CONTROLS   D-pad RIGHT = turn right 90 deg       D-pad LEFT = turn left 90 deg
+//             A = four right turns (a square)        X = zero the counts and the averages
 //             Y = stop everything                    LT = stop (engine)
 //
 //  The gyro turn stops within the SDK's tolerance (DriveTuning::turnToleranceDeg, 2 deg by
@@ -66,9 +66,9 @@ constexpr int   LEFT_ENC_PIN   = DIGITAL_D3;   // back-left encoder channel A: p
 constexpr int   RIGHT_ENC_PIN  = DIGITAL_D2;   // back-right encoder channel A: physical port D1 = GPIO36 (measured with Pin Finder)
 constexpr bool  USE_PULLUP     = true;         // internal pull-up (see Encoder Accuracy for the wiring notes)
 constexpr uint32_t GLITCH_US   = 50;           // ignore edges closer than this
-constexpr float CPM_LEFT       = 3183.0f;      // TUNE: counts per metre, from Encoder Accuracy (placeholder)
-constexpr float CPM_RIGHT      = 3183.0f;      // TUNE: counts per metre, from Encoder Accuracy (placeholder)
-constexpr float TRACK_WIDTH_M  = 0.20f;        // TUNE: placeholder - measure wheel centre to wheel centre
+constexpr float CPM_LEFT       = 1300.0f;      // counts per metre, from Encoder Accuracy verify runs (3 runs)
+constexpr float CPM_RIGHT      = 1300.0f;      // counts per metre, from Encoder Accuracy verify runs (3 runs)
+constexpr float TRACK_WIDTH_M  = 0.316f;       // measured by hand, wheel centre to wheel centre (31.6 cm); T_eff will show the effective value
 constexpr unsigned long SETTLE_MS = 700;       // wait after each turn so the robot stops rolling
 
 // ---------------------------------------------------------------------
@@ -190,11 +190,13 @@ public:
 
         if (!busy && ready)
         {
-            if (gamepad1.justPressed(BTN_DPAD_RIGHT)) runAction(oneTurn(90.0f));
-            if (gamepad1.justPressed(BTN_DPAD_LEFT))  runAction(oneTurn(-90.0f));
+            // Measured on the robot: turn(+90) turns the robot LEFT, so the signs are swapped
+            // to make D-pad RIGHT turn right.
+            if (gamepad1.justPressed(BTN_DPAD_RIGHT)) runAction(oneTurn(-90.0f));
+            if (gamepad1.justPressed(BTN_DPAD_LEFT))  runAction(oneTurn(90.0f));
             if (gamepad1.justPressed(BTN_A))
             {
-                runAction(sequential({ oneTurn(90.0f), oneTurn(90.0f), oneTurn(90.0f), oneTurn(90.0f) }));
+                runAction(sequential({ oneTurn(-90.0f), oneTurn(-90.0f), oneTurn(-90.0f), oneTurn(-90.0f) }));
             }
             if (gamepad1.justPressed(BTN_X))
             {

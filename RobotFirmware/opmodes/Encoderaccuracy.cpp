@@ -73,8 +73,10 @@ constexpr unsigned long CAL_RUN_MS = 2000;     // length of a calibration run
 // = 1360 counts per metre, run-to-run spread about 1.3 %. The same value is used for both
 // sides (assumes identical wheels and gearing), so a robot that veers still reports the
 // centre distance. Re-measure after any wheel, motor or encoder change.
-constexpr float CPM_LEFT       = 1360.0f;
-constexpr float CPM_RIGHT      = 1360.0f;
+// Verify runs (3, 2026-11-19): encoders averaged 1.012 m against a tape average of 1.06 m,
+// so the value was lowered to 1300 (1360 x 1.012 / 1.06). Based on 3 runs only.
+constexpr float CPM_LEFT       = 1300.0f;
+constexpr float CPM_RIGHT      = 1300.0f;
 
 constexpr float TARGET_M       = 1.0f;         // distance for the verify run
 constexpr uint32_t GLITCH_US   = 50;           // ignore edges closer together than this
@@ -264,4 +266,4 @@ public:
     }
 };
 
-REGISTER_OPMODE(EncoderAccuracy, "Encoder Accuracy", TELEOP);
+REGISTER_OPMODE(EncoderAccuracy, "Encoder Accuracy", TELEOP);  
