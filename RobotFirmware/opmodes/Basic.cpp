@@ -9,7 +9,7 @@
 //    A (HOME) ............. toggle TURBO mode
 //    LB ................... toggle EXTREME PRECISION mode
 //    RB ................... toggle the gripper open / closed on a CORE
-//    D-pad UP ............. EMERGENCY STOP (latched, see below)
+//    D-pad UP ............. EMERGENCY STOP on / off (press again to release, see below)
 //    LT toggle ............ engine exit / stop (handled by the engine, not remapped here)
 //
 //  Drive modes (A and LB are mutually exclusive; press again to go back to NORMAL)
@@ -19,7 +19,8 @@
 //
 //  Emergency stop: D-pad UP freezes the robot. The motors stop, all other
 //  inputs are ignored, and the arm and gripper stay exactly where they are.
-//  It stays latched until the OpMode is stopped and started again.
+//  Press D-pad UP again to release it; driving, arm and gripper then work as before,
+//  with the arm and gripper still at the angles they were frozen at.
 //
 //  STATUS: not yet compiled or run on the robot.
 // =====================================================================
@@ -34,7 +35,7 @@ static TankDrive drive(leftMotor, rightMotor);
 // ---------------------------------------------------------------------
 constexpr float ARM_START   = 110.0f;   // stowed pose, robot fits the start box
 constexpr float ARM_MIN_DEG =  85.0f;   // arm up (carry)
-constexpr float ARM_MAX_DEG = 160.0f;   // arm down for picking up a CORE (was 140 = floor level). If it presses on the floor or the servo strains, lower this in small steps
+constexpr float ARM_MAX_DEG = 148.0f;   // arm down for picking up a CORE (was 140 = floor level). If it presses on the floor or the servo strains, lower this in small steps
 constexpr float ARM_STEP    =   1.0f;   // degrees per 10 ms tick at full stick
 
 constexpr float GRIP_OPEN   =   5.0f;   // open: the gripper STARTS here
@@ -100,9 +101,9 @@ public:
 
     void loop() override
     {
-        // Emergency stop: latched. The motors are held at zero, nothing else is commanded,
-        // so the arm and gripper stay exactly where they were.
-        if (gamepad1.justPressed(BTN_DPAD_UP)) estop = true;
+        // Emergency stop: D-pad UP toggles it. While it is on, the motors are held at zero and
+        // nothing else is commanded, so the arm and gripper stay exactly where they were.
+        if (gamepad1.justPressed(BTN_DPAD_UP)) estop = !estop;
         if (estop)
         {
             drive.stop();
