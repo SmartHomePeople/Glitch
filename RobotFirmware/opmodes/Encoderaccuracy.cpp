@@ -1,48 +1,48 @@
 // =====================================================================
-//  GLITCHED (Team 190) - encoder ACCURACY test
+//  GLITCHED (Team 190) - encoder accuracy test (motor-driven only, no hand pushing)
 //  File: RobotFirmware/opmodes/EncoderAccuracy.cpp
 //
-//  OpMode "Encoder Accuracy" (TELEOP). Counts rising edges of channel A of
-//  two OE-28 encoders and helps you find out how far to trust them.
-//  Wiring: left encoder channel A -> D6 (DIGITAL_6, GPIO36), right encoder
-//  channel A -> D7 (DIGITAL_7, GPIO37), the 3.3V / GND / D6 / D7 header. Change
-//  LEFT_ENC_PIN / RIGHT_ENC_PIN below if you wired them the other way round.
+//  OpMode "Encoder Accuracy" (TELEOP). Two encoders, channel A only, counted by interrupts.
 //
-//  Channel A only: the count rises in either direction, which is fine for
-//  straight driving and distance checks.
+//  Wiring (board labels, measured with Pin Finder):
+//    back-left  encoder channel A -> port D2 (GPIO37)
+//    back-right encoder channel A -> port D1 (GPIO36)
+//    both encoders: Vcc (pin 3) -> 5V, GND (pin 4) -> GND
 //
-//  TESTS (do them in this order)
-//   1  NOISE      Robot still, motors idle, 30 s. Both counts must stay at 0.
-//                 Any count that creeps up = electrical noise (check grounds, wiring).
-//   2  WHEEL      Turn each wheel by hand. Its own count must rise, the other must not.
-//                 (If left/right are swapped, swap the two pin constants below.)
-//   3  HAND PUSH  Mark a start line and a line exactly TRIAL_DIST_M away.
-//                 Press X to zero, push the robot by hand to the second line,
-//                 press A to log the trial. Repeat 5-10 times. The screen shows
-//                 counts per metre for each side, the spread between trials
-//                 (repeatability) and the left/right ratio.
-//   4  DRIVE      D-pad UP drives forward until the encoders say TARGET_M, then stops
-//                 and shows where the encoders think it ended up. Measure the real
-//                 distance with a tape and compare. The difference is the accuracy
-//                 of the whole chain (counts, calibration and braking).
-//   5  SPEED      D-pad LEFT drives for SPEED_RUN_MS at TEST_SPEED and shows the
-//                 average speed each encoder measured.
+//  STEP 1 - CALIBRATION RUNS (D-pad UP). The robot drives forward for CAL_RUN_MS at
+//    TEST_SPEED, stops, waits for the rolling to finish, and keeps showing the final
+//    "L count" and "R count". Measure the real distance it travelled with a tape and
+//    write down the counts. Counts per metre = count / distance (metres). Repeat 5 times,
+//    putting the robot back on the start line each time. Keep 2.5 m clear ahead.
+//    Then send me the numbers: I work out CPM_LEFT / CPM_RIGHT, you paste them below.
 //
-//  CONTROLS   X = zero counts     A = log hand-push trial     Y = clear trials + stop
-//             D-pad UP = drive to TARGET_M     D-pad LEFT = timed speed run
+//  STEP 2 - VERIFY RUNS (D-pad RIGHT). Needs CPM_LEFT and CPM_RIGHT filled in. The robot
+//    drives until the encoders say TARGET_M, stops, and shows "end L m" / "end R m".
+//    Measure the real distance with a tape and compare. Repeat 5 times.
+//
+//  CONTROLS   D-pad UP = calibration run     D-pad RIGHT = verify run (drive TARGET_M)
+//             X = zero the counts            Y = stop and clear the run log
 //             LT = stop (engine)
 //
-//  Safety: every drive has a timeout, and stops itself if an encoder gives no
-//  pulses (shown as NO PULSES) or if the two sides disagree badly (shown as L/R MISMATCH).
-//  If the robot drives BACKWARD, set FWD_SIGN to -1.
+//  SCREEN (8 lines)
+//    state      idle / cal run / verify run / settling / done, or SET CPM FIRST / NO PULSES / TIMEOUT
+//    L count    left encoder pulses (live during a run, final value kept after it)
+//    R count    right encoder pulses
+//    runs       completed calibration runs
+//    mean L     average final L count over the calibration runs
+//    mean R     average final R count
+//    end L m    left distance the encoder reported at the end of the last verify run
+//    end R m    right distance the encoder reported at the end of the last verify run
 //
-//  STATUS: written against the NRL SDK v1.5.0 headers. NOT compiled or run on the
-//  robot yet. The limits (10 % mismatch, 1.5 s no-pulse) are my own starting values.
+//  If the robot drives BACKWARD, change FWD_SIGN. Every run stops itself on a timeout,
+//  or if neither encoder counts for NO_PULSE_MS.
+//
+//  STATUS: written against the NRL SDK v1.5.0 headers. NOT compiled or run on the robot yet.
 // =====================================================================
 #include "NRL.h"
 
 // ---------------------------------------------------------------------
-//  Hardware (same motor settings as the other OpModes)
+//  Hardware (same drive settings as the other OpModes)
 // ---------------------------------------------------------------------
 static HexaDCMotor leftMotor{{
     .dirPin = MOTOR_L_DIR,
@@ -62,24 +62,29 @@ static TankDrive drive(leftMotor, rightMotor);
 // ---------------------------------------------------------------------
 //  Tuning
 // ---------------------------------------------------------------------
-constexpr int   LEFT_ENC_PIN   = DIGITAL_6;    // left-side encoder channel A  (D6, GPIO36)
-constexpr int   RIGHT_ENC_PIN  = DIGITAL_7;    // right-side encoder channel A (D7, GPIO37)
-constexpr bool  USE_PULLUP     = false;         // internal pull-up on the encoder inputs (see init)
-constexpr float FWD_SIGN       = 1.0f;         // set to -1.0f if the robot drives backward
-constexpr float TRIAL_DIST_M   = 1.0f;         // length of the hand-push course
-constexpr float COUNTS_PER_M   = 1000.0f;      // TUNE: placeholder used until you log trials
-constexpr float TARGET_M       = 1.0f;         // distance for the drive test
-constexpr float TEST_SPEED     = 0.35f;        // same as followSpeed
-constexpr unsigned long DRIVE_TIMEOUT_MS = 6000;
-constexpr unsigned long SPEED_RUN_MS     = 2000;
-constexpr unsigned long SETTLE_MS        = 700;   // wait after stopping so the robot finishes rolling
-constexpr unsigned long NO_PULSE_MS      = 1500;  // no counts for this long while driving = fault
-constexpr float MISMATCH_FRACTION        = 0.10f; // L and R differing by more than this = fault
-constexpr int   MAX_TRIALS               = 10;
+constexpr int   LEFT_ENC_PIN   = DIGITAL_D3;   // back-left channel A:  board port D2 = GPIO37
+constexpr int   RIGHT_ENC_PIN  = DIGITAL_D2;   // back-right channel A: board port D1 = GPIO36
+constexpr float FWD_SIGN       = -1.0f;        // the robot drove backward with +1, so forward is -1
+constexpr float TEST_SPEED     = 0.35f;        // same as the line-follow speed
+constexpr unsigned long CAL_RUN_MS = 2000;     // length of a calibration run
+
+// Counts per metre. 0 means "not calibrated yet" and blocks the verify run.
+// From 10 calibration runs (2026-11-18): average of both sides' counts / centre distance
+// = 1360 counts per metre, run-to-run spread about 1.3 %. The same value is used for both
+// sides (assumes identical wheels and gearing), so a robot that veers still reports the
+// centre distance. Re-measure after any wheel, motor or encoder change.
+constexpr float CPM_LEFT       = 1360.0f;
+constexpr float CPM_RIGHT      = 1360.0f;
+
+constexpr float TARGET_M       = 1.0f;         // distance for the verify run
+constexpr uint32_t GLITCH_US   = 50;           // ignore edges closer together than this
+constexpr unsigned long VERIFY_TIMEOUT_MS = 6000;
+constexpr unsigned long SETTLE_MS         = 700;    // wait after stopping so the robot finishes rolling
+constexpr unsigned long NO_PULSE_MS       = 1500;   // no counts for this long while driving = fault
 
 // ---------------------------------------------------------------------
-//  Pulse counters (interrupts). A 100 microsecond glitch filter ignores
-//  noise faster than any real wheel can produce.
+//  Pulse counters (interrupts). The Hub pin's pull-up holds the line high; the encoder
+//  pulls it low, so each rising edge is one pulse.
 // ---------------------------------------------------------------------
 static volatile uint32_t leftCount   = 0;
 static volatile uint32_t rightCount  = 0;
@@ -89,13 +94,13 @@ static volatile uint32_t rightLastUs = 0;
 static void IRAM_ATTR leftIsr()
 {
     const uint32_t now = micros();
-    if (now - leftLastUs > 100) { leftCount = leftCount + 1; leftLastUs = now; }
+    if (now - leftLastUs > GLITCH_US) { leftCount = leftCount + 1; leftLastUs = now; }
 }
 
 static void IRAM_ATTR rightIsr()
 {
     const uint32_t now = micros();
-    if (now - rightLastUs > 100) { rightCount = rightCount + 1; rightLastUs = now; }
+    if (now - rightLastUs > GLITCH_US) { rightCount = rightCount + 1; rightLastUs = now; }
 }
 
 static void zeroCounts()
@@ -104,104 +109,82 @@ static void zeroCounts()
     rightCount = 0;
 }
 
-// Wiring diagnostic: the raw pin level, read directly (no interrupts). If a level
-// changes here while a wheel turns but the counts stay 0, the problem is the interrupt
-// code. If the level never changes, the problem is wiring or encoder power.
-static int      pollLastL = 0, pollLastR = 0;
-static uint32_t pollChangesL = 0, pollChangesR = 0;
-
-// ---------------------------------------------------------------------
-//  Trial log (hand push)
-// ---------------------------------------------------------------------
-static uint32_t trialL[MAX_TRIALS];
-static uint32_t trialR[MAX_TRIALS];
-static int      trials = 0;
-
-static float meanOf(const uint32_t *v, int n)
-{
-    if (n == 0) return 0.0f;
-    float s = 0.0f;
-    for (int i = 0; i < n; i++) s += (float)v[i];
-    return s / (float)n;
-}
-
-// Spread of the trials as a percentage of their mean: (max - min) / mean * 100.
-static float spreadPct(const uint32_t *v, int n)
-{
-    if (n < 2) return 0.0f;
-    uint32_t lo = v[0], hi = v[0];
-    for (int i = 1; i < n; i++)
-    {
-        if (v[i] < lo) lo = v[i];
-        if (v[i] > hi) hi = v[i];
-    }
-    const float mean = meanOf(v, n);
-    return mean > 0.0f ? 100.0f * (float)(hi - lo) / mean : 0.0f;
-}
-
-// Counts per metre from the trials, or the placeholder until a trial is logged.
-static float cpmLeft()  { return trials > 0 ? meanOf(trialL, trials) / TRIAL_DIST_M : COUNTS_PER_M; }
-static float cpmRight() { return trials > 0 ? meanOf(trialR, trials) / TRIAL_DIST_M : COUNTS_PER_M; }
-
 // ---------------------------------------------------------------------
 //  Run state (shared with the action lambdas)
 // ---------------------------------------------------------------------
-static const char *state   = "idle";
-static const char *fault   = "none";
-static float runCpmL       = COUNTS_PER_M;   // calibration frozen at the start of a drive
-static float runCpmR       = COUNTS_PER_M;
-static float resultLm      = 0.0f;           // where the encoders say each side ended up
-static float resultRm      = 0.0f;
-static float resultSpeedL  = 0.0f;           // m/s from the timed run
-static float resultSpeedR  = 0.0f;
-static unsigned long tStart = 0;
-static unsigned long tStop  = 0;
+static const char *state    = "idle";
+static const char *faultMsg = "";
+static bool   faulted       = false;
+static int    runs          = 0;      // completed calibration runs
+static float  sumL          = 0.0f;   // sum of final counts over the calibration runs
+static float  sumR          = 0.0f;
+static float  endLm         = 0.0f;   // verify run result
+static float  endRm         = 0.0f;
+static unsigned long tStart     = 0;
+static unsigned long tStop      = 0;
 static unsigned long tLastPulse = 0;
 static uint32_t lastSeenL = 0, lastSeenR = 0;
 
-static float leftM()  { return (float)leftCount  / runCpmL; }
-static float rightM() { return (float)rightCount / runCpmR; }
+static float leftM()  { return (float)leftCount  / CPM_LEFT; }
+static float rightM() { return (float)rightCount / CPM_RIGHT; }
+static float distM()  { return 0.5f * (leftM() + rightM()); }   // average of both sides
 
-// Returns true (and records the fault) when a drive should be aborted.
-static bool driveFault()
-{
-    const uint32_t l = leftCount, r = rightCount;
-    const unsigned long now = millis();
-
-    if (l != lastSeenL || r != lastSeenR)
-    {
-        lastSeenL = l;
-        lastSeenR = r;
-        tLastPulse = now;
-    }
-    if (now - tLastPulse > NO_PULSE_MS) { fault = "NO PULSES"; return true; }
-
-    // Only compare the sides once there is enough travel to compare.
-    const float lm = leftM(), rm = rightM();
-    const float big = lm > rm ? lm : rm;
-    const float diff = lm > rm ? lm - rm : rm - lm;
-    if (big > 0.20f && diff > MISMATCH_FRACTION * big) { fault = "L/R MISMATCH"; return true; }
-    return false;
-}
-
-static void beginDrive(const char *name)
+static void beginRun(const char *name)
 {
     zeroCounts();
-    runCpmL = cpmLeft();
-    runCpmR = cpmRight();
-    fault = "none";
-    state = name;
+    faulted = false;
+    faultMsg = "";
     lastSeenL = 0;
     lastSeenR = 0;
     tStart = millis();
     tLastPulse = tStart;
+    state = name;
 }
 
-static void endDrive()
+// True when neither encoder has counted for NO_PULSE_MS (and records the fault).
+static bool noPulses()
 {
-    drive.stop();
-    tStop = millis();
-    state = "settling";
+    const unsigned long now = millis();
+    const uint32_t l = leftCount, r = rightCount;
+    if (l != lastSeenL || r != lastSeenR) { lastSeenL = l; lastSeenR = r; tLastPulse = now; }
+    if (now - tLastPulse > NO_PULSE_MS) { faulted = true; faultMsg = "NO PULSES"; return true; }
+    return false;
+}
+
+// ---------------------------------------------------------------------
+//  Actions
+// ---------------------------------------------------------------------
+static ActionPtr calibrationRun()
+{
+    return sequential({
+        instant([] { beginRun("cal run"); drive.drive(FWD_SIGN * TEST_SPEED, 0.0f); }),
+        wait_until([] { return millis() - tStart >= CAL_RUN_MS || noPulses(); }),
+        instant([] { drive.stop(); tStop = millis(); state = "settling"; }),
+        wait_until([] { return millis() - tStop > SETTLE_MS; }),
+        instant([] {
+            if (!faulted) { sumL += (float)leftCount; sumR += (float)rightCount; runs++; }
+            state = faulted ? faultMsg : "done";
+        }),
+    });
+}
+
+static ActionPtr verifyRun()
+{
+    return sequential({
+        instant([] { beginRun("verify run"); drive.drive(FWD_SIGN * TEST_SPEED, 0.0f); }),
+        wait_until([] {
+            if (distM() >= TARGET_M) return true;
+            if (millis() - tStart > VERIFY_TIMEOUT_MS) { faulted = true; faultMsg = "TIMEOUT"; return true; }
+            return noPulses();
+        }),
+        instant([] { drive.stop(); tStop = millis(); state = "settling"; }),
+        wait_until([] { return millis() - tStop > SETTLE_MS; }),
+        instant([] {
+            endLm = leftM();
+            endRm = rightM();
+            state = faulted ? faultMsg : "done";
+        }),
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -214,123 +197,63 @@ public:
     {
         leftMotor.begin();
         rightMotor.begin();
-        // INPUT_PULLUP is harmless if the encoder output is push-pull, and required if it is
-        // open-collector. Set USE_PULLUP to false to test with a plain input.
-        pinMode(LEFT_ENC_PIN, USE_PULLUP ? INPUT_PULLUP : INPUT);
-        pinMode(RIGHT_ENC_PIN, USE_PULLUP ? INPUT_PULLUP : INPUT);
-        pollLastL = digitalRead(LEFT_ENC_PIN);
-        pollLastR = digitalRead(RIGHT_ENC_PIN);
-        attachInterrupt(digitalPinToInterrupt(LEFT_ENC_PIN), leftIsr, RISING);
+        pinMode(LEFT_ENC_PIN,  INPUT_PULLUP);
+        pinMode(RIGHT_ENC_PIN, INPUT_PULLUP);
+        attachInterrupt(digitalPinToInterrupt(LEFT_ENC_PIN),  leftIsr,  RISING);
         attachInterrupt(digitalPinToInterrupt(RIGHT_ENC_PIN), rightIsr, RISING);
     }
 
     void start() override
     {
         zeroCounts();
-        trials = 0;
+        runs = 0;
+        sumL = 0.0f;
+        sumR = 0.0f;
+        endLm = 0.0f;
+        endRm = 0.0f;
         state = "idle";
-        fault = "none";
     }
 
     void loop() override
     {
-        const bool busy = isActionRunning();
-
-        // Raw level polling (diagnostic only; the real counting is done by the interrupts).
-        const int lvlL = digitalRead(LEFT_ENC_PIN);
-        const int lvlR = digitalRead(RIGHT_ENC_PIN);
-        if (lvlL != pollLastL) { pollChangesL++; pollLastL = lvlL; }
-        if (lvlR != pollLastR) { pollChangesR++; pollLastR = lvlR; }
-        telemetry.addData("L pin level", (float)lvlL);
-        telemetry.addData("R pin level", (float)lvlR);
-        telemetry.addData("L level changes", (float)pollChangesL);
-        telemetry.addData("R level changes", (float)pollChangesR);
-
-        // Y: clear the trial log and stop everything.
+        // Y: stop everything and clear the run log.
         if (gamepad1.justPressed(BTN_Y))
         {
             cancelActions();
             drive.stop();
-            trials = 0;
             zeroCounts();
+            runs = 0;
+            sumL = 0.0f;
+            sumR = 0.0f;
+            endLm = 0.0f;
+            endRm = 0.0f;
             state = "idle";
-            fault = "none";
         }
 
-        if (!busy)
+        if (!isActionRunning())
         {
             if (gamepad1.justPressed(BTN_X)) zeroCounts();
 
-            // A: log a hand-push trial (robot is pushed by hand, motors idle).
-            if (gamepad1.justPressed(BTN_A) && trials < MAX_TRIALS)
-            {
-                trialL[trials] = leftCount;
-                trialR[trials] = rightCount;
-                trials++;
-            }
+            // D-pad UP: calibration run (timed).
+            if (gamepad1.justPressed(BTN_DPAD_UP)) runAction(calibrationRun());
 
-            // D-pad UP: drive until the encoders say TARGET_M.
-            if (gamepad1.justPressed(BTN_DPAD_UP))
+            // D-pad RIGHT: verify run (drive TARGET_M using the calibrated counts per metre).
+            if (gamepad1.justPressed(BTN_DPAD_RIGHT))
             {
-                beginDrive("driving");
-                runAction(sequential({
-                    instant([] { drive.drive(FWD_SIGN * TEST_SPEED, 0.0f); }),
-                    wait_until([] {
-                        return 0.5f * (leftM() + rightM()) >= TARGET_M
-                            || millis() - tStart > DRIVE_TIMEOUT_MS
-                            || driveFault();
-                    }),
-                    instant([] { endDrive(); }),
-                    wait_until([] { return millis() - tStop > SETTLE_MS; }),
-                    instant([] {
-                        resultLm = leftM();
-                        resultRm = rightM();
-                        state = "done";
-                    }),
-                }));
-            }
-
-            // D-pad LEFT: timed run, reports the speed each encoder measured.
-            if (gamepad1.justPressed(BTN_DPAD_LEFT))
-            {
-                beginDrive("speed run");
-                runAction(sequential({
-                    instant([] { drive.drive(FWD_SIGN * TEST_SPEED, 0.0f); }),
-                    wait_until([] {
-                        return millis() - tStart >= SPEED_RUN_MS || driveFault();
-                    }),
-                    instant([] {
-                        const float secs = (float)(millis() - tStart) / 1000.0f;
-                        resultSpeedL = secs > 0.0f ? leftM() / secs : 0.0f;
-                        resultSpeedR = secs > 0.0f ? rightM() / secs : 0.0f;
-                        endDrive();
-                    }),
-                    wait_until([] { return millis() - tStop > SETTLE_MS; }),
-                    instant([] {
-                        resultLm = leftM();
-                        resultRm = rightM();
-                        state = "done";
-                    }),
-                }));
+                if (CPM_LEFT <= 0.0f || CPM_RIGHT <= 0.0f) state = "SET CPM FIRST";
+                else runAction(verifyRun());
             }
         }
 
-        // ---- Telemetry ----
+        // ---- Screen: exactly 8 lines ----
         telemetry.addData("state", state);
-        telemetry.addData("fault", fault);
         telemetry.addData("L count", (float)leftCount);
         telemetry.addData("R count", (float)rightCount);
-        telemetry.addData("trials", (float)trials);
-        telemetry.addData("L cnt/m", cpmLeft());
-        telemetry.addData("R cnt/m", cpmRight());
-        telemetry.addData("L spread %", spreadPct(trialL, trials));
-        telemetry.addData("R spread %", spreadPct(trialR, trials));
-        const float cl = cpmLeft(), cr = cpmRight();
-        telemetry.addData("L/R ratio", cr > 0.0f ? cl / cr : 0.0f);
-        telemetry.addData("end L m", resultLm);
-        telemetry.addData("end R m", resultRm);
-        telemetry.addData("speed L m/s", resultSpeedL);
-        telemetry.addData("speed R m/s", resultSpeedR);
+        telemetry.addData("runs", (float)runs);
+        telemetry.addData("mean L", runs > 0 ? sumL / (float)runs : 0.0f);
+        telemetry.addData("mean R", runs > 0 ? sumR / (float)runs : 0.0f);
+        telemetry.addData("end L m", endLm);
+        telemetry.addData("end R m", endRm);
     }
 
     void stop() override

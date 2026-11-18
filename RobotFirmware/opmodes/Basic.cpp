@@ -6,13 +6,13 @@
 //    Left stick up/down ... drive forward / backward
 //    Right stick left/right  turn
 //    Right stick up/down ... move the arm
-//    RB ................... toggle TURBO mode
+//    A (HOME) ............. toggle TURBO mode
 //    LB ................... toggle EXTREME PRECISION mode
-//    A (HOME) ............. toggle the gripper open / closed on a CORE
+//    RB ................... toggle the gripper open / closed on a CORE
 //    D-pad UP ............. EMERGENCY STOP (latched, see below)
 //    LT toggle ............ engine exit / stop (handled by the engine, not remapped here)
 //
-//  Drive modes (RB and LB are mutually exclusive; press again to go back to NORMAL)
+//  Drive modes (A and LB are mutually exclusive; press again to go back to NORMAL)
 //    NORMAL   75% top speed, soft centre (more precise than before)
 //    TURBO    100% top speed, linear response
 //    PRECISE  30% top speed, very soft centre
@@ -34,12 +34,12 @@ static TankDrive drive(leftMotor, rightMotor);
 // ---------------------------------------------------------------------
 constexpr float ARM_START   = 110.0f;   // stowed pose, robot fits the start box
 constexpr float ARM_MIN_DEG =  85.0f;   // arm up (carry)
-constexpr float ARM_MAX_DEG = 140.0f;   // arm down (floor level) - do not go past this
+constexpr float ARM_MAX_DEG = 160.0f;   // arm down for picking up a CORE (was 140 = floor level). If it presses on the floor or the servo strains, lower this in small steps
 constexpr float ARM_STEP    =   1.0f;   // degrees per 10 ms tick at full stick
 
 constexpr float GRIP_OPEN   =   5.0f;   // open: the gripper STARTS here
-constexpr float GRIP_CORE   =  65.0f;   // closed on a CORE: firm hold without pushing against the servo limit
-constexpr float GRIP_DEG_S  = 150.0f;   // closing speed in degrees per second: gentle on the CORE and the servo
+constexpr float GRIP_CORE   =  75.0f;   // closed on a CORE: tighter hold (was 70, originally 65). Fully closed with nothing in it is 85, so keep this below 85
+constexpr float GRIP_DEG_S  = 300.0f;   // closing and opening speed in degrees per second (was 150)
 constexpr float ARM_DEG_S   = 120.0f;
 
 // settleMs = 0: the servos HOLD their angle. The gripper starts open and the arm starts
@@ -110,8 +110,8 @@ public:
             return;
         }
 
-        // RB and LB toggle between their mode and NORMAL.
-        if (gamepad1.justPressed(BTN_RB)) applyMode(mode == MODE_TURBO ? MODE_NORMAL : MODE_TURBO);
+        // A and LB toggle between their mode and NORMAL.
+        if (gamepad1.justPressed(BTN_A)) applyMode(mode == MODE_TURBO ? MODE_NORMAL : MODE_TURBO);
         if (gamepad1.justPressed(BTN_LB)) applyMode(mode == MODE_PRECISE ? MODE_NORMAL : MODE_PRECISE);
 
         // Drive: left stick up/down = forward/back, right stick left/right = turn.
@@ -128,7 +128,7 @@ public:
 
         // Gripper: one press closes on the CORE, the next press opens. Calling
         // setPosition() every tick lets the ramp close it gently.
-        if (gamepad1.justPressed(BTN_A)) gripClosed = !gripClosed;
+        if (gamepad1.justPressed(BTN_RB)) gripClosed = !gripClosed;
         gripper.setPosition(gripClosed ? GRIP_CORE : GRIP_OPEN);
 
         // Arm: the stick moves the target angle, which is kept inside the safe range.
