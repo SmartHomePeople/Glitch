@@ -107,6 +107,8 @@ constexpr float FIRST_LEG_M = 0.50f;   // MEASURE: from the edge of the START bo
 constexpr float LAST_LEG_M  = 0.50f;   // MEASURE: from corner C4 to the edge of the PARK box
 constexpr float PIVOT_FWD_M = 0.10f;   // MEASURE: from the sensor bar back to the middle of the chassis
                                        //          (halfway between the front and back wheels)
+constexpr float TURN_ROLL_M = 0.06f;   // TUNE: how far it rolls forward after the line ends, before turning
+                                      // (was PIVOT_FWD_M = 0.10). Smaller = turns closer to where it stopped.
 constexpr float WINDOW_M    = 0.20f;   // a corner is "expected" within +/- this of the predicted distance
 constexpr float SLOW_M      = 0.30f;   // start slowing this far before the predicted corner
 constexpr float PARK_IN_M   = 0.25f + PIVOT_FWD_M;   // array past the box edge so the chassis sits mid-box
@@ -151,7 +153,7 @@ constexpr int   CORNER_DIR     = -1;      // every corner on the way to PARK is 
 constexpr int           LOST_TICKS     = 3;      // line gone this many ticks in a row = line ended
 constexpr unsigned long BOX_CONFIRM_MS = 150;    // TERMINAL (7 of 8 dark) this long = in the box
 constexpr unsigned long CROSS_MAX_MS   = 600;    // longest straight crossing of a branch
-constexpr unsigned long ROLL_MS        = 250;    // roll when encoders are OFF
+constexpr unsigned long ROLL_MS        = 150;    // roll when encoders are OFF (was 250)
 constexpr unsigned long PARK_MS        = 700;    // park drive when encoders are OFF
 constexpr long          TAPE_PARK_MS   = 400;    // "Park Run Tape": SDK park() time into the box (about 250 mm)
 constexpr unsigned long SETTLE_MS      = 250;    // still (no encoder counts) this long = fully stopped
@@ -318,7 +320,7 @@ static void lineEnded()
         return;
     }
     spinDir = CORNER_DIR;
-    rollM = PIVOT_FWD_M;
+    rollM = TURN_ROLL_M;
     if (inWindow && NRLComms::isHeadingReady())   // everything agrees: gyro corner
     {
         mode = 'G';
