@@ -57,7 +57,23 @@ static HexaDCMotor rightMotor{{
 }};
 
 static TankDrive    drive(leftMotor, rightMotor);
-static DriveActions driveActions(drive);
+// Slower, gentler turns so they are easy to read with a protractor. Values are SDK
+// DriveTuning fields (DriveTuning.h); the defaults are turnSpeed 255, turnSlowdownDeg 60,
+// turnBrakeMs 200. The default 200 ms reverse brake pulse after each turn is what pulled the
+// robot back on the spot and left the first turn at 86 deg, so it is shortened here.
+// TUNE: if turns end SHORT of 90, set turnBrakeMs to 0; if they end PAST 90, raise it.
+static DriveTuning makeTurnTuning()
+{
+    DriveTuning t;
+    t.turnSpeed        = 150;     // max turn PWM (default 255)
+    t.turnMinSpeed     = 80;      // floor near the target; stiff wheels need this much to keep moving
+    t.turnSlowdownDeg  = 60.0f;   // start slowing 60 deg before the target
+    t.turnToleranceDeg = 2.0f;    // stop within 2 deg of the target
+    t.turnBrakeMs      = 60;      // short brake pulse (default 200)
+    return t;
+}
+
+static DriveActions driveActions(drive, makeTurnTuning());
 
 // ---------------------------------------------------------------------
 //  Tuning
@@ -209,16 +225,16 @@ public:
             }
         }
 
-        telemetry.addData("state", state);
-        telemetry.addData("heading ready", ready ? "yes" : "NO - keep still");
-        telemetry.addData("turns done", (float)turnsDone);
+        // The Hub screen shows about 8 lines, so the important ones come first.
+        telemetry.addData("state", ready ? state : "WAIT keep still");
         telemetry.addData("gyro deg", lastGyroDeg);
         telemetry.addData("enc deg", lastEncDeg);
         telemetry.addData("L m", lastLm);
         telemetry.addData("R m", lastRm);
-        telemetry.addData("L/R", lastLR);
         telemetry.addData("T_eff m", lastTeff);
         telemetry.addData("T_eff mean", nTeff > 0 ? sumTeff / (float)nTeff : 0.0f);
+        telemetry.addData("turns done", (float)turnsDone);
+        telemetry.addData("L/R", lastLR);
         telemetry.addData("free hdg total", NRLComms::getHeadingFree() - freeStart);
         telemetry.addData("L count", (float)leftCount);
         telemetry.addData("R count", (float)rightCount);
