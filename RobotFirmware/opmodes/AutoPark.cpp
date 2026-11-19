@@ -2,10 +2,13 @@
 //  GLITCHED (Team 190) - Start zone to Park zone
 //  File: RobotFirmware/opmodes/AutoPark.cpp
 //
-//  Three AUTO OpModes:
+//  Four AUTO OpModes:
 //    "Park Run"        MAIN. Our own follower: encoders anticipate each corner, the tape
 //                      confirms it, the gyro makes the turn. If anything does not add up,
 //                      that corner is done by tape alone. (35 pts: leave + park)
+//    "P1-D1 Run"       Park Run plus two detours, no arm or gripper: into P1 to its end bar,
+//                      U-turn, back to the main line, into D1 to its end bar, U-turn, back,
+//                      then the rest of the course and park. The steps are in P1D1_PLAN.
 //    "Park Run Tape"   FALLBACK. The SDK's own tape-only follower, with softer steering.
 //    "First Junction"  FALLBACK. Leave the box and stop just past the first junction.
 //
@@ -17,13 +20,18 @@
 //    1  ENCODERS   It knows how far each corner is (the arena is a 2000 mm square). Near
 //                  the expected distance it slows down.
 //    2  TAPE       The corner is confirmed when the line ends under the array. STOP.
+//       VERIFY    With the robot stopped, the tape is read again. Nothing turns unless it still
+//                 agrees (corner: no line; branch: branch under the array, backing up up to
+//                 8 cm to find it; end bar / main line: bar under the array or just passed).
+//                 If it does not agree, it carries on following - the encoders alone never turn it.
 //    3  ROLL       Roll forward so the middle of the chassis is on the corner. STOP.
 //    4  GYRO       Turn about 90 deg by gyro, slowing near the end. STOP.
-//    5  CHECK      Read the gyro while still: outside 86..94 deg it corrects by gyro (max 2
-//                  times, stopping each time). Then the tape must show the line. If not, it
-//                  searches slowly between 65 and 115 deg only.
-//    6  CENTRE     If the line is off to one side, turn toward it on the spot (one way only,
-//                  stopping when it reaches the middle). Then follow, slowly for the first 15 cm.
+//    5  CHECK      The tape must show the line. If not, it searches slowly between 65 and
+//                  115 deg only. (Gyro corrections are off: MAX_CORRECTIONS = 0. The turn is slow
+//                  instead.)
+//    6  CENTRE     Every turn ends with centring: slow one-way pivots, each ending in a full
+//                  stop, until the line is within CENTRE_ERR of the middle (max 3 passes).
+//                  Then follow, slowly for the first 15 cm.
 //    FALLBACK      If it does not add up (line ended too early/late, encoders stopped, gyro
 //                  not ready or too slow) that corner is turned by TAPE: stop, spin toward the
 //                  corner until the line is under the array, never more than 120 deg.
@@ -32,7 +40,8 @@
 //    was a wobble (not counted), otherwise the corner is done by tape.
 //
 //  SCREEN (8 lines)
-//    state   FOLLOW / STOP / ROLL / GYRO TURN / CHECK / CORRECT / SWEEP / CENTRE / TAPE TURN /
+//    state   FOLLOW / STOP / VERIFY / BACKUP / ROLL / GYRO TURN / CHECK / CORRECT / SWEEP / CENTRE /
+//            TAPE TURN /
 //            PARK IN / DONE / FAULT
 //    why     why the last fallback or fault happened ("-" while all is well)
 //    leg     C1..C4 or BOX, and the expected distance in cm
@@ -103,12 +112,15 @@ static void IRAM_ATTR rightIsr()
 //  Arena and robot. TUNE the three marked MEASURE values on the real arena.
 // ---------------------------------------------------------------------
 constexpr float SIDE_M      = 2.00f;   // manual: the main line is a 2000 x 2000 mm square
-constexpr float FIRST_LEG_M = 0.50f;   // MEASURE: from the edge of the START box (where the line leaves it) to corner C1
+constexpr float FIRST_LEG_M = 0.28f;   // START box edge to corner C1 is about 30 cm on the real arena (2026-11-19);
+                                      // leaveBox() stops a little past the edge, so 28 cm. Was a 50 cm guess,
+                                      // which made C1 look "too early": it was treated as a wobble and searched.
 constexpr float LAST_LEG_M  = 0.50f;   // MEASURE: from corner C4 to the edge of the PARK box
 constexpr float PIVOT_FWD_M = 0.10f;   // MEASURE: from the sensor bar back to the middle of the chassis
                                        //          (halfway between the front and back wheels)
-constexpr float TURN_ROLL_M = 0.06f;   // TUNE: how far it rolls forward after the line ends, before turning
-                                      // (was PIVOT_FWD_M = 0.10). Smaller = turns closer to where it stopped.
+constexpr float TURN_ROLL_M = 0.11f;   // TUNE: from where the line ended to where it turns. Now measured from the
+                                      // detection point INCLUDING the coast (was 0.09 + coast), so +2 cm
+                                      // (was 0.10, then 0.06; 0.09 because it turned too early). Bigger = later turn.
 constexpr float WINDOW_M    = 0.20f;   // a corner is "expected" within +/- this of the predicted distance
 constexpr float SLOW_M      = 0.30f;   // start slowing this far before the predicted corner
 constexpr float PARK_IN_M   = 0.25f + PIVOT_FWD_M;   // array past the box edge so the chassis sits mid-box
@@ -117,12 +129,16 @@ constexpr float PARK_IN_M   = 0.25f + PIVOT_FWD_M;   // array past the box edge 
 //  Driving. Speeds are TankDrive units (-1..1).
 // ---------------------------------------------------------------------
 constexpr float FOLLOW_SPEED   = 0.35f;
-constexpr float APPROACH_SPEED = 0.22f;   // near a predicted corner / the box
+constexpr float APPROACH_SPEED = 0.22f;   // first 15 cm of a step, crossing into a box
+constexpr float CREEP_SPEED    = 0.18f;   // speed reached at the predicted event: the robot slows down
+                                          // gradually from FOLLOW_SPEED over the last SLOW_M
 constexpr float JUNCTION_SPEED = 0.25f;   // straight across a branch, no steering
 constexpr float ROLL_SPEED     = 0.22f;
-constexpr float TURN_FAST      = 0.30f;   // was 0.40 / 0.32: it overshot the corner
-constexpr float TURN_SLOW      = 0.25f;   // last part of a turn, and tape turns (lower may stall the stiff left wheel)
-constexpr float CORR_SPEED     = 0.25f;   // small gyro correction after a turn
+constexpr float TURN_FAST      = 0.20f;   // was 0.40 / 0.32 / 0.30 / 0.24: slow and steady instead of corrections
+constexpr float TURN_SLOW      = 0.17f;   // last part of a turn, and tape turns (was 0.20). If the robot stalls
+                                          // mid-turn (stiff left wheel), raise this back toward 0.25
+constexpr float CORR_SPEED     = 0.17f;   // search and centring speed (was 0.20)
+constexpr int   MAX_CORRECTIONS = 0;      // gyro corrections after a turn: 0 = none (they looked jittery)
 constexpr float SPEED_DROP     = 0.50f;   // slow down as the line moves off centre
 constexpr float RAMP_RATE      = 0.10f;   // how fast motor commands may change per tick (SDK uses 0.25)
 constexpr float MAX_STEER_STEP = 0.025f;  // the steering may change at most this much per tick, so a
@@ -136,15 +152,16 @@ static float   lastSteer = 0.0f;   // the steering used last tick (for MAX_STEER
 
 // Turns
 constexpr float TURN_DEG       = 90.0f;
-constexpr float STOP_EARLY_DEG = 6.0f;    // cut the motors this early; the robot coasts the rest
+constexpr float STOP_EARLY_DEG = 8.0f;    // cut the motors this early; the robot coasts the rest (was 6)
 constexpr float TURN_TOL_DEG   = 4.0f;    // after stopping, 86..94 deg is accepted; outside that it corrects by gyro
 constexpr float SWEEP_DEG      = 25.0f;   // no line after the turn: search only 65..115 deg, never further
 constexpr float MAX_SPIN_DEG   = 120.0f;  // a tape turn never spins more than this (stops the 180 deg reversal)
 constexpr float WOBBLE_DEG     = 60.0f;   // an early line-end is searched this far toward the last-seen side
-constexpr int   CENTRE_ERR     = 500;     // after a turn, pivot (one way only) until the line is this close to centre
+constexpr int   CENTRE_ERR     = 250;     // after every turn the line must be this close to centre before driving
+constexpr int   CENTRE_PASSES  = 3;       // slow centring passes, each ending in a full stop
 constexpr float LEG_START_M    = 0.15f;   // drive slowly for the first part of every leg
 constexpr float NEAR_CORNER_M  = 0.40f;   // a line lost this soon after a corner is searched both ways, never turned as a corner
-constexpr float SLOW_DEG       = 35.0f;   // slow down for the last 35 degrees
+constexpr float SLOW_DEG       = 45.0f;   // slow down for the last 45 degrees (was 35)
 constexpr int   TAPE_ACCEPT_ERR = 1200;   // a tape turn stops once the line is this close to centre;
                                           // the gentle follower straightens the rest
 constexpr int   CORNER_DIR     = -1;      // every corner on the way to PARK is a LEFT turn
@@ -159,58 +176,131 @@ constexpr long          TAPE_PARK_MS   = 400;    // "Park Run Tape": SDK park() 
 constexpr unsigned long SETTLE_MS      = 250;    // still (no encoder counts) this long = fully stopped
 constexpr unsigned long SETTLE_MAX_MS  = 800;
 constexpr unsigned long CENTRE_MAX_MS  = 1500;
-constexpr unsigned long GYRO_TURN_MS   = 3000;   // a gyro turn longer than this does not add up
+constexpr unsigned long GYRO_TURN_MS   = 4500;   // a gyro turn longer than this does not add up (slower turns now)
 constexpr unsigned long TAPE_MIN_MS    = 200;    // spin at least this long before accepting a corner line
 constexpr unsigned long TAPE_MAX_MS    = 2500;   // time limit when the gyro is not ready
 constexpr unsigned long ENC_STALL_MS   = 500;    // no counts while driving this long = encoders OFF
 constexpr unsigned long SOFT_STOP_MS   = 145000;
 
 // ---------------------------------------------------------------------
-//  The course: legs 0..3 end at corners C1..C4, leg 4 ends in the PARK box
+//  Branches and terminals (manual: terminals are 500 mm long, P1 is 500 mm past C1,
+//  D1 is 500 mm past P1, C2 is 1000 mm past D1)
 // ---------------------------------------------------------------------
-constexpr int LAST_LEG = 4;
+constexpr float TERM_M        = 0.50f;   // terminal length, main line to end bar
+constexpr float GAP_M         = 0.50f;   // C1 -> P1 and P1 -> D1
+constexpr float BRANCH_ROLL_M = PIVOT_FWD_M + 0.05f;   /* from the detection point incl. coast (was +0.03 + coast) */   // TUNE (+3 cm: turned too early): roll after seeing a branch / the main line, so the
+                                               // middle of the chassis is on the junction before turning
+constexpr float MIN_EVENT_M   = 0.05f;   // ignore events in the first 5 cm of a step (still leaving a junction)
+constexpr int   WIDE_COUNT    = 5;       // this many dark channels = a bar across the line
+constexpr int   CONFIRM_TICKS = 3;       // a branch must be seen this many ticks in a row
+constexpr float BACKUP_MAX_M  = 0.08f;   // VERIFY: back up at most this far to find the branch again
+constexpr unsigned long UTURN_MIN_MS = 1500;  // a tape U-turn spins at least this long before accepting a line
+                                              // (was 450: it could grab the end bar itself half-way round)
+constexpr float UTURN_BACK_M  = 0.08f;   // TUNE: drive back this far from the end bar before the 180 deg turn
+constexpr unsigned long UTURN_BACK_MS = 300;   // the same, by time, when the encoders are OFF
+constexpr int   BAR_COUNT     = 4;       // an end bar: this many dark channels (the bar is wider than the array)
 
-static float expectedM(int leg)
+// ---------------------------------------------------------------------
+//  The plan: a list of steps. Each step follows the line until one EVENT, then turns.
+// ---------------------------------------------------------------------
+enum class Ev : uint8_t { CORNER, BRANCH_R, BRANCH_L, END_BAR, MAIN_LINE, BOX };
+
+struct Step
 {
-    if (leg == 0)        return FIRST_LEG_M;
-    if (leg == LAST_LEG) return LAST_LEG_M - PIVOT_FWD_M;
-    return SIDE_M - PIVOT_FWD_M;      // after a turn the array is PIVOT_FWD_M past the corner
-}
+    const char *name;    // shown on the screen
+    Ev    ev;            // what ends the step
+    float expM;          // expected encoder distance from the start of the step to the event
+    int   turnDir;       // then turn: -1 left, +1 right
+    float turnDeg;       // 90, or 180 for a U-turn (0 for BOX)
+};
 
-static const char *legName(int leg)
-{
-    static const char *names[] = {"C1", "C2", "C3", "C4", "BOX"};
-    return names[leg < 0 ? 0 : (leg > LAST_LEG ? LAST_LEG : leg)];
-}
+// After every turn the sensor bar is PIVOT_FWD_M past the junction / corner it turned on.
+// After a U-turn on an end bar it is about 2 x PIVOT_FWD_M back from the bar.
+static const Step PARK_PLAN[] = {
+    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f},
+    {"C2",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
+    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
+    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
+    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f},
+};
+
+static const Step P1D1_PLAN[] = {
+    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f},
+    {"to P1",   Ev::BRANCH_R,  GAP_M - PIVOT_FWD_M,         +1,  90.0f},   // turn right into P1
+    {"P1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f},   // U-turn on the end bar
+    {"P1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, +1, 90.0f},   // right = north again
+    {"to D1",   Ev::BRANCH_L,  GAP_M - PIVOT_FWD_M,         -1,  90.0f},   // turn left into D1
+    {"D1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f},
+    {"D1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, -1, 90.0f},   // left = north again
+    {"C2",      Ev::CORNER,    2.0f * GAP_M - PIVOT_FWD_M,  -1,  90.0f},   // P2 on the way is crossed
+    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
+    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
+    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f},
+};
+
+static const Step *plan     = PARK_PLAN;
+static int         planLen  = sizeof(PARK_PLAN) / sizeof(PARK_PLAN[0]);
+static int         stepIdx  = 0;
+
+static const Step &step() { return plan[stepIdx < planLen ? stepIdx : planLen - 1]; }
 
 // ---------------------------------------------------------------------
-//  Park Run state machine
+//  Run state machine (shared by "Park Run" and "P1-D1 Run")
 // ---------------------------------------------------------------------
-enum class St { FOLLOW, STOP, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, CENTRE, TAPE_TURN, PARK_IN, DONE, FAULT };
+enum class St { FOLLOW, STOP, VERIFY, BACKUP, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, CENTRE, CENTRE_CHECK, TAPE_TURN, PARK_IN, DONE, FAULT };
 
 static St          st        = St::FOLLOW;
 static const char *why       = "-";
-static int         leg       = 0;
-static char        turnsLog[8] = "";
+static char        turnsLog[16] = "";
 static float       lastDeg   = 0.0f;
 static bool        encOk     = true;
-static uint32_t    legL = 0, legR = 0;           // encoder counts at the start of the leg
+static uint32_t    legL = 0, legR = 0;           // encoder counts at the start of the step
 static uint32_t    seenL = 0, seenR = 0;         // for the stall check
 static unsigned long tState = 0, tLastCount = 0, tCross = 0, tBox = 0;
 static int         lostTicks = 0;
+static int         branchTicks = 0;
 static bool        crossing  = false;
-static char        mode      = 'G';              // G = gyro corner, T = tape corner, W = wobble check
+static char        mode      = 'G';              // G gyro turn, T tape turn, W wobble check, V search back
 static int         spinDir   = CORNER_DIR;
+static float       targetDeg = TURN_DEG;
 static float       rollFrom  = 0.0f;
+static uint32_t    detL = 0, detR = 0;            // encoder counts where the event was detected
+static uint32_t    adjL = 0, adjR = 0;            // encoder counts when the ADJUST move started
+static float       adjM = 0.0f;                   // ADJUST distance (metres, always positive)
+static int         adjDir = 1;                    // ADJUST direction: +1 forward, -1 backward
 static float       rollM     = 0.0f;
 static uint32_t    runStart  = 0;
-static St          afterStop = St::FOLLOW;   // where STOP goes once the robot is still
+static St          afterStop = St::FOLLOW;       // where STOP goes once the robot is still
 static uint32_t    stopL = 0, stopR = 0;
 static unsigned long tStill = 0;
 static int         corrections = 0;
 static int         sweepPhase  = 0;
 static int         centreDir   = 1;
 static bool        centreFlipped = false;
+static int         centrePasses  = 0;
+static uint32_t    backL = 0, backR = 0;          // encoder counts when BACKUP started
+
+// Turn angle, unwrapped so a 180 deg U-turn is measured correctly.
+static float accDeg = 0.0f, prevHeading = 0.0f;
+
+static void zeroTurn()
+{
+    NRLComms::zeroHeading();
+    prevHeading = NRLComms::getHeading();
+    accDeg = 0.0f;
+}
+
+static void updateTurn()
+{
+    const float h = NRLComms::getHeading();
+    float d = h - prevHeading;
+    if (d > 180.0f)  d -= 360.0f;
+    if (d < -180.0f) d += 360.0f;
+    accDeg += d;
+    prevHeading = h;
+}
+
+static float turned() { return fabsf(accDeg); }
 
 static float legM()
 {
@@ -222,6 +312,7 @@ static void startLeg()
     legL = encL;
     legR = encR;
     lostTicks = 0;
+    branchTicks = 0;
     crossing = false;
     tBox = 0;
     steer.reset();
@@ -247,26 +338,18 @@ static void logTurn(char c)
     if (n < sizeof(turnsLog) - 1) { turnsLog[n] = c; turnsLog[n + 1] = 0; }
 }
 
-static float turned() { return fabsf(NRLComms::getHeading()); }
+static void stopThen(St next);
 
-// A corner is finished: store it and start the next leg.
-static void cornerDone(char c)
+// The step's turn is finished: store it and start the next step.
+static void stepDone(char c)
 {
     drive.stop();
     lastDeg = NRLComms::isHeadingReady() ? turned() : -1.0f;
     logTurn(c);
-    leg++;
-    startLeg();
-    // Line off to one side: turn toward it on the spot first, then drive. Driving forward
-    // with the line at the edge is what lost it at corner C2.
-    if (line.onLine() && abs(line.error()) > CENTRE_ERR)
-    {
-        centreDir = (line.error() > 0) ? STEER_SIGN : -STEER_SIGN;
-        centreFlipped = false;
-        enter(St::CENTRE);
-        return;
-    }
-    enter(St::FOLLOW);
+    stepIdx++;
+    // Always centre on the line (slowly, with full stops) before driving on.
+    centrePasses = 0;
+    stopThen(St::CENTRE_CHECK);
 }
 
 // Stop fully, wait until the robot is still, then go to `next`.
@@ -280,7 +363,8 @@ static void stopThen(St next)
     enter(St::STOP);
 }
 
-// Pure tape turn: from a full stop, spin until the line is under the array.
+// Pure tape turn from a full stop. 'T' = the step's turn, 'W' = wobble (toward where the
+// line was last seen), 'V' = search back the other way.
 static void startTapeTurn(const char *reason, char m)
 {
     if (reason) why = reason;
@@ -289,58 +373,128 @@ static void startTapeTurn(const char *reason, char m)
     {
         const int side = line.lastSeenSide();           // -1 left, +1 right
         spinDir = (side != 0) ? STEER_SIGN * side : CORNER_DIR;
+        targetDeg = WOBBLE_DEG;
     }
     else if (m == 'V')
     {
-        spinDir = -spinDir;                             // search back the other way
+        spinDir = -spinDir;
+        targetDeg = 2.0f * WOBBLE_DEG;
     }
     else
     {
-        spinDir = CORNER_DIR;                           // we know every corner here is a left turn
+        spinDir = step().turnDir;
+        targetDeg = step().turnDeg;
     }
     stopThen(St::TAPE_TURN);
 }
 
-// The line has ended. Decide how to take it.
-static void lineEnded()
+// The event that ends this step has been seen. Turn by gyro if everything agrees, else by tape.
+static void eventSeen(bool inWindow, float roll)
 {
-    const float d = legM();
-    const float e = expectedM(leg);
-    const bool inWindow = encOk && fabsf(d - e) <= WINDOW_M;
-    const bool early    = encOk && d < e - WINDOW_M;
-
-    if (leg == LAST_LEG)                       // no corner left: the line should run into the box
-    {
-        startTapeTurn("line lost", 'W');
-        return;
-    }
-    if (early)                                 // too soon for a corner: probably a wobble
-    {
-        startTapeTurn("early end", 'W');
-        return;
-    }
-    spinDir = CORNER_DIR;
-    rollM = TURN_ROLL_M;
-    if (inWindow && NRLComms::isHeadingReady())   // everything agrees: gyro corner
+    spinDir   = step().turnDir;
+    targetDeg = step().turnDeg;
+    rollM     = roll;               // where to put the robot, measured from the detection point
+    detL      = encL;               // (+ forward, - backward)
+    detR      = encR;
+    if ((inWindow || step().turnDeg > 135.0f) && NRLComms::isHeadingReady())
     {
         mode = 'G';
     }
-    else                                          // late, encoders off, or gyro not ready
+    else
     {
-        why = !encOk ? "enc off" : (!NRLComms::isHeadingReady() ? "gyro not ready" : "late corner");
+        why = !encOk ? "enc off" : (!NRLComms::isHeadingReady() ? "gyro not ready" : "off window");
         mode = 'T';
     }
-    stopThen(St::ROLL);
+    stopThen(St::VERIFY);       // nothing turns until the tape confirms it with the robot stopped
+}
+
+// After VERIFY: roll (if this event needs it), then turn.
+static void verified()
+{
+    // The robot coasted a little after the detection. Move forward or backward so it ends up
+    // exactly rollM from the detection point.
+    float remaining = rollM;
+    if (encOk)
+    {
+        const float travelled = 0.5f * ((float)(encL - detL) + (float)(encR - detR)) / CPM;
+        remaining = rollM - travelled;
+    }
+    if (fabsf(remaining) < 0.01f)
+    {
+        stopThen(mode == 'G' ? St::GYRO_TURN : St::TAPE_TURN);
+        return;
+    }
+    adjDir = (remaining > 0.0f) ? 1 : -1;
+    adjM   = fabsf(remaining);
+    adjL   = encL;
+    adjR   = encR;
+    enter(St::ROLL);
+}
+
+// VERIFY failed: it was not the event. Carry on following on the same step.
+static void notConfirmed(const char *reason)
+{
+    why = reason;
+    lostTicks = 0;
+    branchTicks = 0;
+    steer.reset();
+    lastSteer = 0.0f;
+    enter(St::FOLLOW);
+}
+
+// The line has ended (nothing under the array for LOST_TICKS).
+static void lineEnded()
+{
+    const Step &s = step();
+    const float d = legM();
+    const bool inWindow = encOk && fabsf(d - s.expM) <= WINDOW_M;
+    const bool early    = encOk && d < s.expM - WINDOW_M;
+
+    switch (s.ev)
+    {
+    case Ev::END_BAR:            // ran past the end bar: that is the bar
+    case Ev::MAIN_LINE:          // crossed the main line
+        if (early && d < MIN_EVENT_M) { startTapeTurn("early end", 'W'); return; }
+        eventSeen(inWindow, s.ev == Ev::MAIN_LINE ? BRANCH_ROLL_M * 0.5f : -UTURN_BACK_M);
+        return;
+    case Ev::BRANCH_R:
+    case Ev::BRANCH_L:
+        if (early) { startTapeTurn("early end", 'W'); return; }
+        fault("missed branch");  // the line ended before the branch was seen
+        return;
+    case Ev::BOX:
+        startTapeTurn("line lost", 'W');
+        return;
+    case Ev::CORNER:
+        if (early) { startTapeTurn("early end", 'W'); return; }
+        eventSeen(inWindow, TURN_ROLL_M);
+        return;
+    }
+}
+
+// True when the array shows a branch on `side` (+1 right, -1 left) with the line still ahead.
+// Strict on purpose: the SDK's own classifier must say BRANCH, or four neighbouring channels
+// from the centre out to the edge must all be dark (one 25 mm line cannot cover that).
+static bool branchOn(int side)
+{
+    const LinePattern p = line.pattern();
+    const bool right = side * STEER_SIGN > 0;
+    if (right && p == LinePattern::RIGHT_BRANCH) return true;
+    if (!right && p == LinePattern::LEFT_BRANCH) return true;
+    const uint8_t m = line.mask();
+    if (right) return (m & 0x78) == 0x78;       // ch3, ch4, ch5, ch6 (ch7 is dead)
+    return (m & 0x0F) == 0x0F;                  // ch0, ch1, ch2, ch3
 }
 
 // One control tick of the whole run. Returns true when finished (DONE or FAULT).
-static bool parkRunTick()
+static bool runTick()
 {
     const unsigned long now = millis();
     const bool gyroOk = NRLComms::isHeadingReady();
+    updateTurn();
 
     // Encoder health: counts must keep coming while we drive forward.
-    const bool driving = (st == St::FOLLOW || st == St::ROLL || st == St::PARK_IN);
+    const bool driving = (st == St::FOLLOW || st == St::ROLL || st == St::PARK_IN || st == St::BACKUP);
     if (encL != seenL || encR != seenR) { seenL = encL; seenR = encR; tLastCount = now; }
     if (!driving) tLastCount = now;
     if (encOk && driving && now - tLastCount > ENC_STALL_MS) { encOk = false; why = "enc off"; }
@@ -349,26 +503,73 @@ static bool parkRunTick()
     {
     case St::FOLLOW:
     {
+        const Step &s = step();
         const float d = legM();
-        const float e = expectedM(leg);
-        const bool  slow  = encOk && (d >= e - SLOW_M || d < LEG_START_M);
-        const float speed = slow ? APPROACH_SPEED : FOLLOW_SPEED;
+        // Speed: slow for the first 15 cm, then normal, then easing down to CREEP_SPEED over the
+        // last SLOW_M before the predicted event (and staying there if it comes late).
+        float speed = FOLLOW_SPEED;
+        if (encOk)
+        {
+            if (d < LEG_START_M) speed = APPROACH_SPEED;
+            else if (d >= s.expM - SLOW_M)
+            {
+                float f = (d - (s.expM - SLOW_M)) / SLOW_M;
+                if (f > 1.0f) f = 1.0f;
+                speed = FOLLOW_SPEED - f * (FOLLOW_SPEED - CREEP_SPEED);
+            }
+        }
         const LinePattern p = line.pattern();
+        const bool inWindow = encOk && fabsf(d - s.expM) <= WINDOW_M;
+        const bool late     = encOk && d > s.expM + WINDOW_M;
+        const bool started  = !encOk || d >= MIN_EVENT_M;
+        // A bar only counts after half the expected distance: right after the U-turn the end bar is
+        // still close behind, and must not be taken for the main line (that skipped "P1 back").
+        const bool barStarted = !encOk || d >= ((0.5f * s.expM > MIN_EVENT_M) ? 0.5f * s.expM : MIN_EVENT_M);
 
-        // Last leg: the PARK box reads as TERMINAL (7 or more channels dark).
-        if (leg == LAST_LEG && p == LinePattern::TERMINAL)
+        // BOX: the PARK box reads as TERMINAL (7 or more channels dark).
+        if (s.ev == Ev::BOX && p == LinePattern::TERMINAL)
         {
             if (tBox == 0) tBox = now | 1;
             drive.drive(APPROACH_SPEED, 0.0f);
             if (now - tBox >= BOX_CONFIRM_MS)
             {
-                if (encOk && d < e - WINDOW_M) why = "box early";
+                if (encOk && d < s.expM - WINDOW_M) why = "box early";
                 rollFrom = legM();
                 enter(St::PARK_IN);
             }
             return false;
         }
         tBox = 0;
+
+        // END_BAR / MAIN_LINE: a bar across the line (many channels dark).
+        const int needDark = (s.ev == Ev::END_BAR) ? BAR_COUNT : WIDE_COUNT;
+        if ((s.ev == Ev::END_BAR || s.ev == Ev::MAIN_LINE) && barStarted &&
+            (p == LinePattern::TERMINAL || line.count() >= needDark))
+        {
+            if (encOk && d < s.expM - WINDOW_M) why = (s.ev == Ev::END_BAR) ? "bar early" : "main early";
+            eventSeen(true, s.ev == Ev::MAIN_LINE ? BRANCH_ROLL_M : -UTURN_BACK_M);   // a bar: the tape decides
+            return false;
+        }
+
+        // BRANCH: inside the window (or once late, or with encoders off) take the branch.
+        if ((s.ev == Ev::BRANCH_R || s.ev == Ev::BRANCH_L) && started)
+        {
+            const int side = (s.ev == Ev::BRANCH_R) ? +1 : -1;
+            const bool allowed = inWindow || late || !encOk;
+            if (allowed && branchOn(side))
+            {
+                if (++branchTicks >= CONFIRM_TICKS)
+                {
+                    if (late) why = "branch late";
+                    eventSeen(inWindow, BRANCH_ROLL_M);
+                    return false;
+                }
+            }
+            else
+            {
+                branchTicks = 0;
+            }
+        }
 
         // Line gone: drive straight on slowly, and after LOST_TICKS treat it as the line ending.
         if (!line.onLine())
@@ -380,7 +581,7 @@ static bool parkRunTick()
         }
         lostTicks = 0;
 
-        // A branch (or the start of a corner): cross it straight, no steering.
+        // Any other branch: cross it straight, no steering.
         const bool branch = (p == LinePattern::LEFT_BRANCH || p == LinePattern::RIGHT_BRANCH ||
                              p == LinePattern::TERMINAL || line.count() >= 4);
         if (branch)
@@ -400,7 +601,7 @@ static bool parkRunTick()
         }
 
         // Normal gentle following.
-        const float err  = (float)line.error() / 3500.0f;
+        const float err = (float)line.error() / 3500.0f;
         float turn = STEER_SIGN * steer.update(err);
         if (turn > lastSteer + MAX_STEER_STEP) turn = lastSteer + MAX_STEER_STEP;
         if (turn < lastSteer - MAX_STEER_STEP) turn = lastSteer - MAX_STEER_STEP;
@@ -422,7 +623,7 @@ static bool parkRunTick()
             if (next == St::ROLL) rollFrom = legM();
             if (next == St::GYRO_TURN || next == St::TAPE_TURN)
             {
-                NRLComms::zeroHeading();               // measure the turn from here
+                zeroTurn();                            // measure the turn from here
                 corrections = 0;
             }
             enter(next);
@@ -430,11 +631,73 @@ static bool parkRunTick()
         return false;
     }
 
+    case St::VERIFY:
+    {
+        // The robot is stopped. The tape must confirm the event before anything turns.
+        const Step &s = step();
+        const bool wide = line.pattern() == LinePattern::TERMINAL || line.count() >= WIDE_COUNT;
+        switch (s.ev)
+        {
+        case Ev::CORNER:
+            if (!line.onLine()) verified();                    // the line really has ended
+            else notConfirmed("not a corner");                 // line is back: it was a gap
+            return false;
+        case Ev::END_BAR:
+        case Ev::MAIN_LINE:
+            if (wide || !line.onLine()) verified();            // on the bar, or just past it
+            else notConfirmed("no bar");
+            return false;
+        case Ev::BRANCH_R:
+        case Ev::BRANCH_L:
+        {
+            const int side = (s.ev == Ev::BRANCH_R) ? +1 : -1;
+            if (branchOn(side)) { verified(); return false; }  // still over the branch
+            backL = encL;                                      // coasted past it: back up to find it
+            backR = encR;
+            enter(St::BACKUP);
+            return false;
+        }
+        case Ev::BOX:
+            verified();
+            return false;
+        }
+        return false;
+    }
+
+    case St::BACKUP:
+    {
+        // Reverse slowly until the branch is under the array again (at most BACKUP_MAX_M).
+        const int side = (step().ev == Ev::BRANCH_R) ? +1 : -1;
+        const float backed = 0.5f * ((float)(encL - backL) + (float)(encR - backR)) / CPM;
+        if (branchOn(side))
+        {
+            drive.stop();
+            detL = encL;                                       // the branch is here
+            detR = encR;
+            verified();
+            return false;
+        }
+        if ((encOk && backed >= BACKUP_MAX_M) || now - tState > 1500)
+        {
+            drive.stop();
+            // Encoders count both ways: remove the backing up (and the drive back over it).
+            legL += 2 * (encL - backL);
+            legR += 2 * (encR - backR);
+            notConfirmed("branch not confirmed");
+            return false;
+        }
+        drive.drive(-ROLL_SPEED, 0.0f);
+        return false;
+    }
+
     case St::ROLL:
     {
-        drive.drive(ROLL_SPEED, 0.0f);
-        const bool done = encOk ? (legM() - rollFrom >= rollM) : (now - tState >= ROLL_MS);
-        if (done || now - tState > 2000)
+        // ADJUST: move forward or backward to the turning spot.
+        drive.drive(adjDir * ROLL_SPEED, 0.0f);
+        const float moved = 0.5f * ((float)(encL - adjL) + (float)(encR - adjR)) / CPM;
+        const bool done = encOk ? (moved >= adjM)
+                                : (now - tState >= (adjDir > 0 ? ROLL_MS : UTURN_BACK_MS));
+        if (done || now - tState > 2500)
         {
             if (mode == 'G') stopThen(St::GYRO_TURN);
             else             stopThen(St::TAPE_TURN);
@@ -444,13 +707,13 @@ static bool parkRunTick()
 
     case St::GYRO_TURN:
     {
-        const float left = TURN_DEG - STOP_EARLY_DEG - turned();
+        const float left = targetDeg - STOP_EARLY_DEG - turned();
         if (left <= 0.0f)
         {
             stopThen(St::CHECK);
             return false;
         }
-        if (now - tState > GYRO_TURN_MS)                       // does not add up
+        if (now - tState > GYRO_TURN_MS * (targetDeg > 135.0f ? 2 : 1))   // does not add up
         {
             startTapeTurn("gyro slow", 'T');
             return false;
@@ -462,8 +725,8 @@ static bool parkRunTick()
     case St::CHECK:
     {
         // Robot is still. First the gyro: correct an over- or under-turn (at most twice).
-        const float errDeg = turned() - TURN_DEG;            // + = turned too far
-        if (fabsf(errDeg) > TURN_TOL_DEG && corrections < 2)
+        const float errDeg = turned() - targetDeg;           // + = turned too far
+        if (fabsf(errDeg) > TURN_TOL_DEG && corrections < MAX_CORRECTIONS)
         {
             corrections++;
             enter(St::CORRECT);
@@ -472,7 +735,7 @@ static bool parkRunTick()
         // Then the tape must agree.
         if (line.onLine())
         {
-            cornerDone('G');
+            stepDone('G');
             return false;
         }
         why = "no line after turn";
@@ -483,7 +746,7 @@ static bool parkRunTick()
 
     case St::CORRECT:
     {
-        const float errDeg = turned() - TURN_DEG;
+        const float errDeg = turned() - targetDeg;
         if (fabsf(errDeg) <= TURN_TOL_DEG * 0.5f || now - tState > 1500)
         {
             stopThen(St::CHECK);
@@ -495,33 +758,53 @@ static bool parkRunTick()
 
     case St::SWEEP:
     {
-        // Slow search for the line, only between 65 and 115 degrees.
+        // Slow search for the line, only within +/- SWEEP_DEG of the target.
         if (line.onLine())
         {
-            cornerDone('S');
+            stepDone('S');
             return false;
         }
         const float t = turned();
         if (sweepPhase == 0)
         {
-            if (t >= TURN_DEG + SWEEP_DEG || now - tState > 2500) { sweepPhase = 1; tState = now; }
+            if (t >= targetDeg + SWEEP_DEG || now - tState > 2500) { sweepPhase = 1; tState = now; }
             else drive.drive(0.0f, spinDir * CORR_SPEED);
         }
         else
         {
-            if (t <= TURN_DEG - SWEEP_DEG || now - tState > 4000) { fault("no line at corner"); return true; }
+            if (t <= targetDeg - SWEEP_DEG || now - tState > 4000) { fault("no line at turn"); return true; }
             drive.drive(0.0f, -spinDir * CORR_SPEED);
         }
         return false;
     }
 
+    case St::CENTRE_CHECK:
+    {
+        // Robot is still. Centred enough (or out of passes): start the next step from here.
+        const bool centred = line.onLine() && abs(line.error()) <= CENTRE_ERR;
+        if (centred || centrePasses >= CENTRE_PASSES)
+        {
+            startLeg();                                        // distance counts from here
+            enter(St::FOLLOW);
+            return false;
+        }
+        centrePasses++;
+        if (line.onLine())
+            centreDir = (line.error() > 0) ? STEER_SIGN : -STEER_SIGN;
+        else
+            centreDir = (line.lastSeenSide() != 0) ? STEER_SIGN * line.lastSeenSide() : -spinDir;
+        centreFlipped = false;
+        enter(St::CENTRE);
+        return false;
+    }
+
     case St::CENTRE:
     {
-        // One direction only: stop as soon as the line is near centre or crosses it.
+        // One slow pass in one direction; stop when the line reaches the middle or crosses it.
         if (!line.onLine())
         {
-            if (!centreFlipped) { centreDir = -centreDir; centreFlipped = true; tState = now; }
-            else if (now - tState > CENTRE_MAX_MS) { fault("lost after turn"); return true; }
+            if (!centreFlipped && now - tState > CENTRE_MAX_MS / 2) { centreDir = -centreDir; centreFlipped = true; tState = now; }
+            else if (centreFlipped && now - tState > CENTRE_MAX_MS) { fault("lost after turn"); return true; }
             drive.drive(0.0f, centreDir * CORR_SPEED);
             return false;
         }
@@ -529,7 +812,7 @@ static bool parkRunTick()
         const int errDir = (err > 0) ? STEER_SIGN : -STEER_SIGN;
         if (abs(err) <= CENTRE_ERR || errDir != centreDir || now - tState > CENTRE_MAX_MS)
         {
-            stopThen(St::FOLLOW);
+            stopThen(St::CENTRE_CHECK);
             return false;
         }
         drive.drive(0.0f, centreDir * CORR_SPEED);
@@ -539,31 +822,35 @@ static bool parkRunTick()
     case St::TAPE_TURN:
     {
         // Pure tape: spin until the line is under the array, with a hard limit on how far.
-        const unsigned long minMs = (mode == 'W') ? 0 : TAPE_MIN_MS;
-        if (now - tState >= minMs && line.onLine() && abs(line.error()) <= TAPE_ACCEPT_ERR)
+        unsigned long minMs = TAPE_MIN_MS;
+        if (mode == 'W' || mode == 'V') minMs = 0;
+        else if (targetDeg > 135.0f)     minMs = UTURN_MIN_MS;
+        const bool onBar = line.count() >= BAR_COUNT;
+        if (now - tState >= minMs && line.onLine() && !onBar && abs(line.error()) <= TAPE_ACCEPT_ERR)
         {
             drive.stop();
             if (mode == 'W' || mode == 'V')
             {
-                lostTicks = 0;                                 // a wobble: same leg, distance kept
+                lostTicks = 0;                                 // a wobble: same step, distance kept
                 steer.reset();
                 lastSteer = 0.0f;
                 stopThen(St::FOLLOW);
                 return false;
             }
-            cornerDone('T');
+            stepDone('T');
             return false;
         }
-        const float limit = (mode == 'W') ? WOBBLE_DEG : (mode == 'V' ? 2.0f * WOBBLE_DEG : MAX_SPIN_DEG);
-        const bool tooFar = gyroOk ? (turned() >= limit) : (now - tState > TAPE_MAX_MS);
+        const float limit = (mode == 'W' || mode == 'V') ? targetDeg : targetDeg + 30.0f;
+        const bool tooFar = gyroOk ? (turned() >= limit)
+                                   : (now - tState > TAPE_MAX_MS * (targetDeg > 135.0f ? 2 : 1));
         if (tooFar)
         {
             if (mode == 'W')
             {
-                // Not found on the last-seen side. Just after a corner (or on the last leg) it
-                // cannot be a corner: search back the other way. Otherwise it was the corner.
-                if (leg == LAST_LEG || legM() < NEAR_CORNER_M) startTapeTurn("search back", 'V');
-                else                                           startTapeTurn("early corner", 'T');
+                // Not found on the last-seen side. Just after a turn, on the box leg, or on a
+                // step that is not a corner, it cannot be a corner: search back the other way.
+                if (step().ev != Ev::CORNER || legM() < NEAR_CORNER_M) startTapeTurn("search back", 'V');
+                else                                                   startTapeTurn("early corner", 'T');
                 return false;
             }
             fault("no line");
@@ -601,12 +888,15 @@ static const char *stateName()
     {
     case St::FOLLOW:    return "FOLLOW";
     case St::STOP:      return "STOP";
-    case St::ROLL:      return "ROLL";
+    case St::VERIFY:    return "VERIFY";
+    case St::BACKUP:    return "BACKUP";
+    case St::ROLL:      return "ADJUST";
     case St::GYRO_TURN: return "GYRO TURN";
     case St::CHECK:     return "CHECK";
     case St::CORRECT:   return "CORRECT";
     case St::SWEEP:     return "SWEEP";
     case St::CENTRE:    return "CENTRE";
+    case St::CENTRE_CHECK: return "CENTRE CHK";
     case St::TAPE_TURN: return "TAPE TURN";
     case St::PARK_IN:   return "PARK IN";
     case St::DONE:      return "DONE";
@@ -636,7 +926,7 @@ static bool inBox()
 // ---------------------------------------------------------------------
 //  OpModes
 // ---------------------------------------------------------------------
-class ParkRun : public NRLOpMode
+class LineRunBase : public NRLOpMode
 {
 public:
     void init() override        // INIT does not move anything (R8.11)
@@ -655,9 +945,10 @@ public:
         lineActions.clearFault();
         lineActions.resetCounts();
         lineActions.clearRoute();
+        choosePlan();
+        stepIdx = 0;
         st = St::FOLLOW;
         why = "-";
-        leg = 0;
         turnsLog[0] = 0;
         lastDeg = 0.0f;
         encOk = true;
@@ -672,7 +963,7 @@ public:
                 startLeg();
                 enter(St::FOLLOW);
             }),
-            wait_until([] { return parkRunTick(); }),
+            wait_until([] { return runTick(); }),
         }));
     }
 
@@ -687,7 +978,7 @@ public:
         }
 
         static char legLine[16], dLine[16];
-        snprintf(legLine, sizeof(legLine), "%s exp %d", legName(leg), (int)(expectedM(leg) * 100.0f + 0.5f));
+        snprintf(legLine, sizeof(legLine), "%s exp %d", step().name, (int)(step().expM * 100.0f + 0.5f));
         snprintf(dLine, sizeof(dLine), "%d", (int)(legM() * 100.0f + 0.5f));
 
         telemetry.addData("state", stateName());
@@ -705,6 +996,29 @@ public:
         drive.stop();
         detachInterrupt(digitalPinToInterrupt(LEFT_ENC_PIN));
         detachInterrupt(digitalPinToInterrupt(RIGHT_ENC_PIN));
+    }
+
+protected:
+    virtual void choosePlan() = 0;
+};
+
+class ParkRun : public LineRunBase
+{
+protected:
+    void choosePlan() override
+    {
+        plan = PARK_PLAN;
+        planLen = sizeof(PARK_PLAN) / sizeof(PARK_PLAN[0]);
+    }
+};
+
+class P1D1Run : public LineRunBase
+{
+protected:
+    void choosePlan() override
+    {
+        plan = P1D1_PLAN;
+        planLen = sizeof(P1D1_PLAN) / sizeof(P1D1_PLAN[0]);
     }
 };
 
@@ -794,5 +1108,6 @@ protected:
 };
 
 REGISTER_OPMODE(ParkRun,       "Park Run",       AUTO);
+REGISTER_OPMODE(P1D1Run,       "P1-D1 Run",      AUTO);
 REGISTER_OPMODE(ParkRunTape,   "Park Run Tape",  AUTO);
 REGISTER_OPMODE(FirstJunction, "First Junction", AUTO);
