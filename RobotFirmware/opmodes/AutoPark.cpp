@@ -16,28 +16,26 @@
 //  LINE TEST calibration on this mat (white first, then black; "1 DEAD" for channel 7 is ok).
 //
 //  ---------------------------------------------------------------------------------
-//  HOW "Park Run" TAKES A CORNER (the robot comes to a FULL STOP before and after each move)
-//    1  ENCODERS   It knows how far each corner is (the arena is a 2000 mm square). Near
-//                  the expected distance it slows down.
-//    2  TAPE       The corner is confirmed when the line ends under the array. STOP.
-//       VERIFY    With the robot stopped, the tape is read again. Nothing turns unless it still
-//                 agrees (corner: no line; branch: branch under the array, backing up up to
-//                 8 cm to find it; end bar / main line: bar under the array or just passed).
-//                 If it does not agree, it carries on following - the encoders alone never turn it.
-//    3  ROLL       Roll forward so the middle of the chassis is on the corner. STOP.
-//    4  GYRO       Turn about 90 deg by gyro, slowing near the end. STOP.
-//    5  CHECK      The tape must show the line. If not, it searches slowly between 65 and
-//                  115 deg only. (Gyro corrections are off: MAX_CORRECTIONS = 0. The turn is slow
-//                  instead.)
-//    6  CENTRE     Every turn ends with centring: slow one-way pivots, each ending in a full
-//                  stop, until the line is within CENTRE_ERR of the middle (max 3 passes).
-//                  Then follow, slowly for the first 15 cm.
-//    FALLBACK      If it does not add up (line ended too early/late, encoders stopped, gyro
-//                  not ready or too slow) that corner is turned by TAPE: stop, spin toward the
-//                  corner until the line is under the array, never more than 120 deg.
-//    "turns" stores every corner: G = gyro, S = gyro + search, T = tape. P = parked.
-//    A line that ends too early is searched 60 deg toward where it was last seen; if found it
-//    was a wobble (not counted), otherwise the corner is done by tape.
+//  HOW EVERY TURN IS TAKEN (corners, branches, the T back onto the main line, U-turns)
+//    1  FOLLOW     Gentle line following. Encoders predict the next event; the robot eases
+//                  down to CREEP_SPEED over the last 30 cm before it.
+//    2  DETECT     Only the tape triggers: line ends (corner), branch on the expected side seen
+//                  3 ticks in a row while the robot is square to the grid (branch), wide bar
+//                  (end bar / T). Encoders only decide WHERE to look. STOP fully.
+//    3  VERIFY     Robot still: the tape must still agree, else it carries on following.
+//    4  LOCATE     Creep to the exact tape edge: corner = back up until the line end is under
+//                  the sensor bar; branch / T = back off the tape, creep forward onto its edge.
+//    5  ADJUST     From that edge, move exactly PIVOT_FWD_M -/+ half a tape width, so the
+//                  middle of the chassis sits on the junction. (End bar: back up 8 cm instead.)
+//    6  TURN       Slow gyro turn (90 or 180 deg). STOP. Tape must show a line, else a slow
+//                  search between target -25 and +25 deg.
+//    7  SQUARE     Square the robot to the arena grid with the gyro (lines are all at
+//                  0/90/180/270 deg), up to 3 slow passes with stops. If the line is under the
+//                  array: drive; the follower removes any small sideways offset. If not: slow
+//                  tape centring passes.
+//    FALLBACKS     Any check that does not add up turns that one event by tape alone, with spin
+//                  limits; nothing ever spins more than target + 30 deg; if lost it stops (FAULT).
+//    "turns" stores every turn: G = gyro, S = gyro + search, T = tape. P = parked.
 //
 //  SCREEN (8 lines)
 //    state   FOLLOW / STOP / VERIFY / BACKUP / ROLL / GYRO TURN / CHECK / CORRECT / SWEEP / CENTRE /
@@ -62,14 +60,14 @@
 static HexaDCMotor leftMotor{{
     .dirPin = MOTOR_L_DIR,
     .pwmPin = MOTOR_L_PWM,
-    .minDrive = 29
+    .minDrive = 34        // Min Drive test 2026-11-19: left max 31 (pivot) + 3
 }};
 
 static HexaDCMotor rightMotor{{
     .dirPin = MOTOR_R_DIR,
     .pwmPin = MOTOR_R_PWM,
     .flipped = true,
-    .minDrive = 32
+    .minDrive = 32        // Min Drive test 2026-11-19: right max 29 (pivot) + 3
 }};
 
 static TankDrive drive(leftMotor, rightMotor);
@@ -112,13 +110,12 @@ static void IRAM_ATTR rightIsr()
 //  Arena and robot. TUNE the three marked MEASURE values on the real arena.
 // ---------------------------------------------------------------------
 constexpr float SIDE_M      = 2.00f;   // manual: the main line is a 2000 x 2000 mm square
-constexpr float FIRST_LEG_M = 0.28f;   // START box edge to corner C1 is about 30 cm on the real arena (2026-11-19);
+constexpr float FIRST_LEG_M = 0.28f;   // START box edge to corner C1 = 30 cm (measured 2026-11-19);
                                       // leaveBox() stops a little past the edge, so 28 cm. Was a 50 cm guess,
                                       // which made C1 look "too early": it was treated as a wobble and searched.
-constexpr float LAST_LEG_M  = 0.50f;   // MEASURE: from corner C4 to the edge of the PARK box
-constexpr float PIVOT_FWD_M = 0.10f;   // MEASURE: from the sensor bar back to the middle of the chassis
-                                       //          (halfway between the front and back wheels)
-constexpr float TURN_ROLL_M = 0.11f;   // TUNE: from where the line ended to where it turns. Now measured from the
+constexpr float LAST_LEG_M  = 0.30f;   // corner C4 to the edge of the PARK box = 30 cm (measured 2026-11-19)
+constexpr float PIVOT_FWD_M = 0.08f;   // sensor bar back to the middle of the chassis = 8 cm (measured 2026-11-19)
+constexpr float TURN_ROLL_M = 0.08f;   /* FALLBACK only (used if LOCATE cannot find the line end) */   // TUNE: from where the line ended to where it turns. Now measured from the
                                       // detection point INCLUDING the coast (was 0.09 + coast), so +2 cm
                                       // (was 0.10, then 0.06; 0.09 because it turned too early). Bigger = later turn.
 constexpr float WINDOW_M    = 0.20f;   // a corner is "expected" within +/- this of the predicted distance
@@ -146,7 +143,7 @@ constexpr float MAX_STEER_STEP = 0.025f;  // the steering may change at most thi
 
 // Steering: a gentle PD on the line error (-1..+1). TUNE: if it still zig-zags lower kP;
 // if it runs wide off the line raise it. +1 when channel 0 is the LEFT-most sensor.
-constexpr int   STEER_SIGN = 1;
+constexpr int   STEER_SIGN = 1;      // confirmed 2026-11-19: channel 0 is on the LEFT (dead channel 7 is right-most)
 static HexaPID steer{ HexaPIDConfig{ .kP = 0.22f, .kD = 0.08f, .outMin = -0.25f, .outMax = 0.25f, .dAlpha = 0.5f } };
 static float   lastSteer = 0.0f;   // the steering used last tick (for MAX_STEER_STEP)
 
@@ -186,7 +183,7 @@ constexpr unsigned long SOFT_STOP_MS   = 145000;
 //  Branches and terminals (manual: terminals are 500 mm long, P1 is 500 mm past C1,
 //  D1 is 500 mm past P1, C2 is 1000 mm past D1)
 // ---------------------------------------------------------------------
-constexpr float TERM_M        = 0.50f;   // terminal length, main line to end bar
+constexpr float TERM_M        = 0.50f;   // terminal length, main line to end bar (confirmed on the arena)
 constexpr float GAP_M         = 0.50f;   // C1 -> P1 and P1 -> D1
 constexpr float BRANCH_ROLL_M = PIVOT_FWD_M + 0.05f;   /* from the detection point incl. coast (was +0.03 + coast) */   // TUNE (+3 cm: turned too early): roll after seeing a branch / the main line, so the
                                                // middle of the chassis is on the junction before turning
@@ -199,6 +196,19 @@ constexpr unsigned long UTURN_MIN_MS = 1500;  // a tape U-turn spins at least th
 constexpr float UTURN_BACK_M  = 0.08f;   // TUNE: drive back this far from the end bar before the 180 deg turn
 constexpr unsigned long UTURN_BACK_MS = 300;   // the same, by time, when the encoders are OFF
 constexpr int   BAR_COUNT     = 4;       // an end bar: this many dark channels (the bar is wider than the array)
+
+// LOCATE: after stopping, find the exact tape edge by creeping, then move by a measured amount.
+constexpr float LINE_HALF_M   = 0.0125f; // half the 25 mm tape width
+constexpr float LOCATE_SPEED  = 0.16f;   // creep speed while looking for the tape edge
+constexpr float LOCATE_MAX_M  = 0.15f;   // give up looking for the edge after this far (then use the old roll)
+constexpr float CORNER_TRIM_M = 0.0f;    // TUNE: + = turn later at corners,  - = earlier (after PIVOT_FWD_M is measured)
+constexpr float BRANCH_TRIM_M = 0.0f;    // TUNE: + = turn later at branches / T, - = earlier
+
+// GRID: the arena lines are all at 0/90/180/270 deg. After every turn the robot squares itself
+// to the grid with the gyro (not by twisting toward the tape, which left it crooked).
+constexpr float GRID_TOL_DEG     = 2.0f;   // square to the grid within this
+constexpr int   GRID_PASSES      = 3;      // gyro squaring passes, each ending in a full stop
+constexpr float BRANCH_MAX_ANGLE = 12.0f;  // a branch only counts while the robot is this square to the grid
 
 // ---------------------------------------------------------------------
 //  The plan: a list of steps. Each step follows the line until one EVENT, then turns.
@@ -247,7 +257,7 @@ static const Step &step() { return plan[stepIdx < planLen ? stepIdx : planLen - 
 // ---------------------------------------------------------------------
 //  Run state machine (shared by "Park Run" and "P1-D1 Run")
 // ---------------------------------------------------------------------
-enum class St { FOLLOW, STOP, VERIFY, BACKUP, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, CENTRE, CENTRE_CHECK, TAPE_TURN, PARK_IN, DONE, FAULT };
+enum class St { FOLLOW, STOP, VERIFY, BACKUP, LOCATE, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, GRID_ALIGN, GRID_CHECK, CENTRE, CENTRE_CHECK, TAPE_TURN, PARK_IN, DONE, FAULT };
 
 static St          st        = St::FOLLOW;
 static const char *why       = "-";
@@ -268,6 +278,16 @@ static uint32_t    detL = 0, detR = 0;            // encoder counts where the ev
 static uint32_t    adjL = 0, adjR = 0;            // encoder counts when the ADJUST move started
 static float       adjM = 0.0f;                   // ADJUST distance (metres, always positive)
 static int         adjDir = 1;                    // ADJUST direction: +1 forward, -1 backward
+static int         locPhase = 0;                  // LOCATE: -1 find the tape, 0 back off it, 1 creep onto its edge
+static bool        locCorner = false;             // LOCATE for a corner (line end) instead of a branch / T
+static uint32_t    locL = 0, locR = 0;
+static float       freeStart = 0.0f;              // free gyro heading at the start (robot square in the box)
+static float       gridTurn  = 0.0f;              // sum of all turns made so far (+ right), in degrees
+static int         freeSign  = 0;                 // +1 / -1 once learned: how the free heading moves on a right turn
+static float       freeBefore = 0.0f;             // free heading when the current turn started
+static int         alignSign = 1;
+static int         gridPasses = 0;
+static float       alignStartErr = 0.0f;
 static float       rollM     = 0.0f;
 static uint32_t    runStart  = 0;
 static St          afterStop = St::FOLLOW;       // where STOP goes once the robot is still
@@ -301,6 +321,20 @@ static void updateTurn()
 }
 
 static float turned() { return fabsf(accDeg); }
+
+static float wrap180(float a)
+{
+    while (a > 180.0f)  a -= 360.0f;
+    while (a < -180.0f) a += 360.0f;
+    return a;
+}
+
+// How far the robot is from square to the grid line it should be on (deg). Only valid once
+// freeSign is known (learned on the first turn).
+static float gridErr()
+{
+    return wrap180((NRLComms::getHeadingFree() - freeStart) - freeSign * gridTurn);
+}
 
 static float legM()
 {
@@ -346,10 +380,17 @@ static void stepDone(char c)
     drive.stop();
     lastDeg = NRLComms::isHeadingReady() ? turned() : -1.0f;
     logTurn(c);
+    // Learn which way the free heading moves (first turn only), then record this turn.
+    const float dFree = wrap180(NRLComms::getHeadingFree() - freeBefore);
+    if (freeSign == 0 && fabsf(dFree) > 45.0f && step().turnDir != 0 && step().turnDeg < 135.0f)   // not from a U-turn (+/-180 is ambiguous)
+        freeSign = ((dFree > 0.0f) ? 1 : -1) * step().turnDir;
+    gridTurn += step().turnDir * step().turnDeg;
     stepIdx++;
-    // Always centre on the line (slowly, with full stops) before driving on.
+    // Square up to the grid with the gyro, then (if needed) find the tape. Full stops throughout.
+    gridPasses = 0;
     centrePasses = 0;
-    stopThen(St::CENTRE_CHECK);
+    if (freeSign != 0 && NRLComms::isHeadingReady()) stopThen(St::GRID_CHECK);
+    else                                             stopThen(St::CENTRE_CHECK);
 }
 
 // Stop fully, wait until the robot is still, then go to `next`.
@@ -406,6 +447,40 @@ static void eventSeen(bool inWindow, float roll)
         mode = 'T';
     }
     stopThen(St::VERIFY);       // nothing turns until the tape confirms it with the robot stopped
+}
+
+static void verified();
+static bool branchOn(int side);
+
+static bool locPred()
+{
+    const Step &s = step();
+    if (locCorner) return line.onLine();
+    if (s.ev == Ev::BRANCH_R) return branchOn(+1);
+    if (s.ev == Ev::BRANCH_L) return branchOn(-1);
+    return line.pattern() == LinePattern::TERMINAL || line.count() >= WIDE_COUNT;   // the T / main line
+}
+
+// Creep to the exact tape edge before the final move. Corner: back up until the line end is
+// under the array. Branch / T: back off the tape, then creep forward onto its near edge.
+static void startLocate(bool corner)
+{
+    locCorner = corner;
+    locPhase  = corner ? 0 : (locPred() ? 0 : -1);
+    locL = encL;
+    locR = encR;
+    enter(St::LOCATE);
+}
+
+// The tape edge is under the sensor bar: from here the move is a measured distance.
+static void locateDone()
+{
+    drive.stop();
+    detL = encL;
+    detR = encR;
+    rollM = locCorner ? (PIVOT_FWD_M - LINE_HALF_M + CORNER_TRIM_M)     // array is just past the corner's far edge
+                      : (PIVOT_FWD_M + LINE_HALF_M + BRANCH_TRIM_M);    // array is on the branch's near edge
+    verified();
 }
 
 // After VERIFY: roll (if this event needs it), then turn.
@@ -555,7 +630,8 @@ static bool runTick()
         if ((s.ev == Ev::BRANCH_R || s.ev == Ev::BRANCH_L) && started)
         {
             const int side = (s.ev == Ev::BRANCH_R) ? +1 : -1;
-            const bool allowed = inWindow || late || !encOk;
+            const bool square  = (freeSign == 0) || fabsf(gridErr()) <= BRANCH_MAX_ANGLE;
+            const bool allowed = (inWindow || late || !encOk) && square;
             if (allowed && branchOn(side))
             {
                 if (++branchTicks >= CONFIRM_TICKS)
@@ -625,6 +701,7 @@ static bool runTick()
             {
                 zeroTurn();                            // measure the turn from here
                 corrections = 0;
+                if (next == St::GYRO_TURN || mode == 'T') freeBefore = NRLComms::getHeadingFree();
             }
             enter(next);
         }
@@ -639,19 +716,22 @@ static bool runTick()
         switch (s.ev)
         {
         case Ev::CORNER:
-            if (!line.onLine()) verified();                    // the line really has ended
+            if (!line.onLine()) startLocate(true);             // the line really has ended
             else notConfirmed("not a corner");                 // line is back: it was a gap
             return false;
         case Ev::END_BAR:
-        case Ev::MAIN_LINE:
             if (wide || !line.onLine()) verified();            // on the bar, or just past it
             else notConfirmed("no bar");
+            return false;
+        case Ev::MAIN_LINE:
+            if (wide || !line.onLine()) startLocate(false);    // on the main line, or just past it
+            else notConfirmed("no main line");
             return false;
         case Ev::BRANCH_R:
         case Ev::BRANCH_L:
         {
             const int side = (s.ev == Ev::BRANCH_R) ? +1 : -1;
-            if (branchOn(side)) { verified(); return false; }  // still over the branch
+            if (branchOn(side)) { startLocate(false); return false; }  // still over the branch
             backL = encL;                                      // coasted past it: back up to find it
             backR = encR;
             enter(St::BACKUP);
@@ -672,9 +752,9 @@ static bool runTick()
         if (branchOn(side))
         {
             drive.stop();
-            detL = encL;                                       // the branch is here
+            detL = encL;                                       // the branch is here (fallback point)
             detR = encR;
-            verified();
+            startLocate(false);
             return false;
         }
         if ((encOk && backed >= BACKUP_MAX_M) || now - tState > 1500)
@@ -687,6 +767,91 @@ static bool runTick()
             return false;
         }
         drive.drive(-ROLL_SPEED, 0.0f);
+        return false;
+    }
+
+    case St::LOCATE:
+    {
+        const float moved = 0.5f * ((float)(encL - locL) + (float)(encR - locR)) / CPM;
+        const bool p = locPred();
+        if ((encOk && moved > LOCATE_MAX_M) || now - tState > 3000)
+        {
+            drive.stop();
+            why = "edge not found";                            // fall back to the old roll distance
+            verified();
+            return false;
+        }
+        if (locCorner)
+        {
+            if (p) { locateDone(); return false; }             // line end back under the bar
+            drive.drive(-LOCATE_SPEED, 0.0f);
+        }
+        else if (locPhase < 0)                                 // passed it: back up onto it
+        {
+            if (p) locPhase = 0;
+            drive.drive(-LOCATE_SPEED, 0.0f);
+        }
+        else if (locPhase == 0)                                // back off it
+        {
+            if (!p)
+            {
+                drive.stop();
+                locPhase = 1;
+                locL = encL;
+                locR = encR;
+                tState = now;
+                return false;
+            }
+            drive.drive(-LOCATE_SPEED, 0.0f);
+        }
+        else                                                   // creep forward onto its near edge
+        {
+            if (p) { locateDone(); return false; }
+            drive.drive(LOCATE_SPEED, 0.0f);
+        }
+        return false;
+    }
+
+    case St::GRID_CHECK:
+    {
+        // Robot is still. Square to the grid with the gyro (up to GRID_PASSES slow passes).
+        const float e = gridErr();
+        if (fabsf(e) > GRID_TOL_DEG && gridPasses < GRID_PASSES && fabsf(e) < 45.0f)
+        {
+            gridPasses++;
+            alignSign = (e > 0.0f) ? 1 : -1;
+            alignStartErr = fabsf(e);
+            enter(St::GRID_ALIGN);
+            return false;
+        }
+        if (line.onLine())                                     // square and on the tape: go
+        {
+            startLeg();
+            enter(St::FOLLOW);
+            return false;
+        }
+        why = "no line after squaring";                        // square but no tape: tape search
+        enter(St::CENTRE_CHECK);
+        return false;
+    }
+
+    case St::GRID_ALIGN:
+    {
+        const float e = gridErr();
+        const int eSign = (e > 0.0f) ? 1 : -1;
+        if (fabsf(e) > alignStartErr + 5.0f)                   // getting worse: wrong way, stop using the grid
+        {
+            freeSign = 0;
+            why = "grid sign wrong";
+            stopThen(St::CENTRE_CHECK);
+            return false;
+        }
+        if (fabsf(e) <= GRID_TOL_DEG * 0.5f || eSign != alignSign || now - tState > 2000)
+        {
+            stopThen(St::GRID_CHECK);
+            return false;
+        }
+        drive.drive(0.0f, -alignSign * freeSign * CORR_SPEED);
         return false;
     }
 
@@ -890,6 +1055,9 @@ static const char *stateName()
     case St::STOP:      return "STOP";
     case St::VERIFY:    return "VERIFY";
     case St::BACKUP:    return "BACKUP";
+    case St::LOCATE:    return "LOCATE";
+    case St::GRID_ALIGN: return "SQUARE";
+    case St::GRID_CHECK: return "SQUARE CHK";
     case St::ROLL:      return "ADJUST";
     case St::GYRO_TURN: return "GYRO TURN";
     case St::CHECK:     return "CHECK";
@@ -947,6 +1115,9 @@ public:
         lineActions.clearRoute();
         choosePlan();
         stepIdx = 0;
+        freeStart = NRLComms::getHeadingFree();   // the robot is placed square in the START box
+        gridTurn  = 0.0f;
+        freeSign  = 0;
         st = St::FOLLOW;
         why = "-";
         turnsLog[0] = 0;

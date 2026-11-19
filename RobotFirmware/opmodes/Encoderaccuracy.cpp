@@ -48,13 +48,13 @@ static HexaDCMotor leftMotor{{
     .dirPin = MOTOR_L_DIR,
     .pwmPin = MOTOR_L_PWM,
     .flipped = true,
-    .minDrive = 29        // TUNE: re-measure after any motor change
+    .minDrive = 34        // Min Drive test 2026-11-19: left max 31 (pivot) + 3
 }};
 
 static HexaDCMotor rightMotor{{
     .dirPin = MOTOR_R_DIR,
     .pwmPin = MOTOR_R_PWM,
-    .minDrive = 32        // TUNE: re-measure after any motor change
+    .minDrive = 32        // Min Drive test 2026-11-19: right max 29 (pivot) + 3
 }};
 
 static TankDrive drive(leftMotor, rightMotor);
@@ -266,4 +266,4 @@ public:
     }
 };
 
-REGISTER_OPMODE(EncoderAccuracy, "Encoder Accuracy", TELEOP);  
+REGISTER_OPMODE(EncoderAccuracy, "Encoder Accuracy", TELEOP);

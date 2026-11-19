@@ -22,14 +22,14 @@
 static HexaDCMotor leftMotor{{
     .dirPin = MOTOR_L_DIR,
     .pwmPin = MOTOR_L_PWM,
-    .minDrive = 29        // TUNE: re-measure if the motors were swapped
+    .minDrive = 34        // Min Drive test 2026-11-19: left max 31 (pivot) + 3
 }};
 
 static HexaDCMotor rightMotor{{
     .dirPin = MOTOR_R_DIR,
     .pwmPin = MOTOR_R_PWM,
     .flipped = true,      // 2026-11-19: both motors reversed (was left only) - the new motors drove backward and turned the wrong way
-    .minDrive = 32        // TUNE: re-measure if the motors were swapped
+    .minDrive = 32        // Min Drive test 2026-11-19: right max 29 (pivot) + 3
 }};
 
 static TankDrive drive(leftMotor, rightMotor);
