@@ -154,7 +154,10 @@ constexpr float TURN_TOL_DEG   = 4.0f;    // after stopping, 86..94 deg is accep
 constexpr float SWEEP_DEG      = 25.0f;   // no line after the turn: search only 65..115 deg, never further
 constexpr float MAX_SPIN_DEG   = 120.0f;  // a tape turn never spins more than this (stops the 180 deg reversal)
 constexpr float WOBBLE_DEG     = 60.0f;   // an early line-end is searched this far toward the last-seen side
-constexpr int   CENTRE_ERR     = 250;     // after every turn the line must be this close to centre before driving
+constexpr int   CENTRE_ERR     = 250;     // tape centring target when the gyro grid is not available
+constexpr int   LATERAL_MAX    = 1800;    // after squaring: line further off-centre than this -> twist toward it
+constexpr int   LATERAL_OK     = 800;     //   ...until it is within this (a small angle; the follower does the rest)
+constexpr float FLICKER_M      = 0.04f;   // after a 'line back' check, a lost line within this is a wobble
 constexpr int   CENTRE_PASSES  = 3;       // slow centring passes, each ending in a full stop
 constexpr float LEG_START_M    = 0.15f;   // drive slowly for the first part of every leg
 constexpr float NEAR_CORNER_M  = 0.40f;   // a line lost this soon after a corner is searched both ways, never turned as a corner
@@ -195,7 +198,9 @@ constexpr unsigned long UTURN_MIN_MS = 1500;  // a tape U-turn spins at least th
                                               // (was 450: it could grab the end bar itself half-way round)
 constexpr float UTURN_BACK_M  = 0.08f;   // TUNE: drive back this far from the end bar before the 180 deg turn
 constexpr unsigned long UTURN_BACK_MS = 300;   // the same, by time, when the encoders are OFF
-constexpr int   BAR_COUNT     = 4;       // an end bar: this many dark channels (the bar is wider than the array)
+constexpr int   BAR_MIN_DARK  = 6;       // a bar across the array: at least this many dark channels (7 work),
+                                         // and at least 3 more than the plain line (was 4: the plain line itself
+                                         // could read 4, so it kept "finding" the bar and stopping)
 
 // LOCATE: after stopping, find the exact tape edge by creeping, then move by a measured amount.
 constexpr float LINE_HALF_M   = 0.0125f; // half the 25 mm tape width
@@ -203,6 +208,21 @@ constexpr float LOCATE_SPEED  = 0.16f;   // creep speed while looking for the ta
 constexpr float LOCATE_MAX_M  = 0.15f;   // give up looking for the edge after this far (then use the old roll)
 constexpr float CORNER_TRIM_M = 0.0f;    // TUNE: + = turn later at corners,  - = earlier (after PIVOT_FWD_M is measured)
 constexpr float BRANCH_TRIM_M = 0.0f;    // TUNE: + = turn later at branches / T, - = earlier
+constexpr float RIGHT_TURN_TRIM_M = -0.015f;  // right turns at a branch / T pivot 1.5 cm early, so the new line
+                                              // lands LEFT of centre: channel 7 (right-most) is dead, and a line
+                                              // on the right edge kept dropping out (the P1 jerking)
+constexpr float SENSOR_PITCH_M = 0.010f; // MEASURE: distance between two neighbouring IR sensors on the bar
+constexpr float LEARN_GAIN    = 0.5f;    // how much of each turn's landing error is corrected next time
+constexpr float LEARN_MAX_M   = 0.04f;   // learned turn-position correction limit (+/-)
+constexpr float CROSS_ZONE_M  = 0.10f;   // within this of a known junction: drive straight on the gyro
+constexpr float HOLD_KP       = 0.010f;  // gyro heading hold while crossing: steering per degree off square
+constexpr float HOLD_MAX      = 0.12f;
+constexpr float TERMINAL_SPEED = 0.20f;  // top speed on a terminal (cores sit just past the end bar)
+constexpr float BAR_CREEP_SPEED = 0.14f; // last BAR_CREEP_M before an end bar
+constexpr float BAR_CREEP_M    = 0.15f;
+constexpr float OFF_COURSE_DEG = 30.0f;  // a 'corner' while this far off square = followed a branch by mistake
+constexpr unsigned long SOFT_LOST_MS = 500;   // line lost where no end is expected: creep and steer toward it
+constexpr float SOFT_TURN     = 0.12f;        //   for up to this long, without stopping
 
 // GRID: the arena lines are all at 0/90/180/270 deg. After every turn the robot squares itself
 // to the grid with the gyro (not by twisting toward the tape, which left it crooked).
@@ -222,30 +242,36 @@ struct Step
     float expM;          // expected encoder distance from the start of the step to the event
     int   turnDir;       // then turn: -1 left, +1 right
     float turnDeg;       // 90, or 180 for a U-turn (0 for BOX)
+    float cross[3];      // junctions to CROSS on the way (distance from the step start), 0 = none
 };
+
+// Junctions along a side are 500 / 1000 / 1500 mm from its corner; the sensor bar starts a leg
+// PIVOT_FWD_M past the corner.
+#define SIDE_CROSS { 0.5f - PIVOT_FWD_M, 1.0f - PIVOT_FWD_M, 1.5f - PIVOT_FWD_M }
+#define NO_CROSS   { 0.0f, 0.0f, 0.0f }
 
 // After every turn the sensor bar is PIVOT_FWD_M past the junction / corner it turned on.
 // After a U-turn on an end bar it is about 2 x PIVOT_FWD_M back from the bar.
 static const Step PARK_PLAN[] = {
-    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f},
-    {"C2",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
-    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
-    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
-    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f},
+    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f, NO_CROSS},
+    {"C2",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f, SIDE_CROSS},   // P1 D1 P2
+    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f, SIDE_CROSS},   // P3 D2 P4
+    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f, SIDE_CROSS},   // P5 D3 P6
+    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f, NO_CROSS},
 };
 
 static const Step P1D1_PLAN[] = {
-    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f},
-    {"to P1",   Ev::BRANCH_R,  GAP_M - PIVOT_FWD_M,         +1,  90.0f},   // turn right into P1
-    {"P1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f},   // U-turn on the end bar
-    {"P1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, +1, 90.0f},   // right = north again
-    {"to D1",   Ev::BRANCH_L,  GAP_M - PIVOT_FWD_M,         -1,  90.0f},   // turn left into D1
-    {"D1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f},
-    {"D1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, -1, 90.0f},   // left = north again
-    {"C2",      Ev::CORNER,    2.0f * GAP_M - PIVOT_FWD_M,  -1,  90.0f},   // P2 on the way is crossed
-    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
-    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f},
-    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f},
+    {"C1",      Ev::CORNER,    FIRST_LEG_M,                 -1,  90.0f, NO_CROSS},
+    {"to P1",   Ev::BRANCH_R,  GAP_M - PIVOT_FWD_M,         +1,  90.0f, NO_CROSS},   // turn right into P1
+    {"P1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f, NO_CROSS},   // U-turn on the end bar
+    {"P1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, +1, 90.0f, NO_CROSS},   // right = north again
+    {"to D1",   Ev::BRANCH_L,  GAP_M - PIVOT_FWD_M,         -1,  90.0f, NO_CROSS},   // turn left into D1
+    {"D1 end",  Ev::END_BAR,   TERM_M - PIVOT_FWD_M,        -1, 180.0f, NO_CROSS},
+    {"D1 back", Ev::MAIN_LINE, TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M, -1, 90.0f, NO_CROSS},   // left = north again
+    {"C2",      Ev::CORNER,    2.0f * GAP_M - PIVOT_FWD_M,  -1,  90.0f, {GAP_M - PIVOT_FWD_M, 0.0f, 0.0f}},   // cross P2
+    {"C3",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f, SIDE_CROSS},   // cross P3 D2 P4
+    {"C4",      Ev::CORNER,    SIDE_M - PIVOT_FWD_M,        -1,  90.0f, SIDE_CROSS},   // cross P5 D3 P6
+    {"BOX",     Ev::BOX,       LAST_LEG_M - PIVOT_FWD_M,     0,   0.0f, NO_CROSS},
 };
 
 static const Step *plan     = PARK_PLAN;
@@ -268,6 +294,15 @@ static uint32_t    legL = 0, legR = 0;           // encoder counts at the start 
 static uint32_t    seenL = 0, seenR = 0;         // for the stall check
 static unsigned long tState = 0, tLastCount = 0, tCross = 0, tBox = 0;
 static int         lostTicks = 0;
+static unsigned long tLost = 0;
+static bool        anchored[3] = {false, false, false};   // junctions of this leg already used to re-anchor
+static int         jxSeen = 0;                           // junctions on this leg seen by the tape
+static float       learnCorner = 0.0f;                   // learned turn-position corrections (metres)
+static float       learnBranch[2] = {0.0f, 0.0f};        //   [0] = left turn at a branch / T, [1] = right
+static bool        lastLocated = false;                  // this turn's position came from LOCATE
+static bool        lastLocCorner = false;
+static int         lastLocDir = 0;
+static int         lastTurnErr = 0;                      // line error right after squaring (screen)
 static int         branchTicks = 0;
 static bool        crossing  = false;
 static char        mode      = 'G';              // G gyro turn, T tape turn, W wobble check, V search back
@@ -298,6 +333,8 @@ static int         sweepPhase  = 0;
 static int         centreDir   = 1;
 static bool        centreFlipped = false;
 static int         centrePasses  = 0;
+static int         centreTarget  = CENTRE_ERR;
+static float       flickerUntilM = 0.0f;
 static uint32_t    backL = 0, backR = 0;          // encoder counts when BACKUP started
 
 // Turn angle, unwrapped so a 180 deg U-turn is measured correctly.
@@ -349,8 +386,11 @@ static void startLeg()
     branchTicks = 0;
     crossing = false;
     tBox = 0;
+    flickerUntilM = 0.0f;
     steer.reset();
     lastSteer = 0.0f;
+    anchored[0] = anchored[1] = anchored[2] = false;
+    jxSeen = 0;
 }
 
 static void enter(St s)
@@ -389,6 +429,7 @@ static void stepDone(char c)
     // Square up to the grid with the gyro, then (if needed) find the tape. Full stops throughout.
     gridPasses = 0;
     centrePasses = 0;
+    centreTarget = CENTRE_ERR;
     if (freeSign != 0 && NRLComms::isHeadingReady()) stopThen(St::GRID_CHECK);
     else                                             stopThen(St::CENTRE_CHECK);
 }
@@ -430,13 +471,17 @@ static void startTapeTurn(const char *reason, char m)
 }
 
 // The event that ends this step has been seen. Turn by gyro if everything agrees, else by tape.
+static void rememberMask();
+
 static void eventSeen(bool inWindow, float roll)
 {
     spinDir   = step().turnDir;
     targetDeg = step().turnDeg;
     rollM     = roll;               // where to put the robot, measured from the detection point
+    lastLocated = false;
     detL      = encL;               // (+ forward, - backward)
     detR      = encR;
+    rememberMask();
     if ((inWindow || step().turnDeg > 135.0f) && NRLComms::isHeadingReady())
     {
         mode = 'G';
@@ -451,6 +496,7 @@ static void eventSeen(bool inWindow, float roll)
 
 static void verified();
 static bool branchOn(int side);
+static bool barSeen();
 
 static bool locPred()
 {
@@ -458,7 +504,7 @@ static bool locPred()
     if (locCorner) return line.onLine();
     if (s.ev == Ev::BRANCH_R) return branchOn(+1);
     if (s.ev == Ev::BRANCH_L) return branchOn(-1);
-    return line.pattern() == LinePattern::TERMINAL || line.count() >= WIDE_COUNT;   // the T / main line
+    return barSeen();                                                                // the T / main line
 }
 
 // Creep to the exact tape edge before the final move. Corner: back up until the line end is
@@ -478,8 +524,13 @@ static void locateDone()
     drive.stop();
     detL = encL;
     detR = encR;
-    rollM = locCorner ? (PIVOT_FWD_M - LINE_HALF_M + CORNER_TRIM_M)     // array is just past the corner's far edge
-                      : (PIVOT_FWD_M + LINE_HALF_M + BRANCH_TRIM_M);    // array is on the branch's near edge
+    const int dir = step().turnDir;
+    rollM = locCorner ? (PIVOT_FWD_M - LINE_HALF_M + CORNER_TRIM_M + learnCorner)   // just past the corner's far edge
+                      : (PIVOT_FWD_M + LINE_HALF_M + BRANCH_TRIM_M                  // on the branch's near edge
+                         + (dir > 0 ? RIGHT_TURN_TRIM_M : 0.0f) + learnBranch[dir > 0 ? 1 : 0]);
+    lastLocated   = (step().turnDeg < 135.0f);   // only 90 deg turns teach the turn position
+    lastLocCorner = locCorner;
+    lastLocDir    = dir;
     verified();
 }
 
@@ -514,6 +565,7 @@ static void notConfirmed(const char *reason)
     branchTicks = 0;
     steer.reset();
     lastSteer = 0.0f;
+    flickerUntilM = legM() + FLICKER_M;   // if the line drops again right away: wobble search, not a stop
     enter(St::FOLLOW);
 }
 
@@ -529,7 +581,9 @@ static void lineEnded()
     {
     case Ev::END_BAR:            // ran past the end bar: that is the bar
     case Ev::MAIN_LINE:          // crossed the main line
-        if (early && d < MIN_EVENT_M) { startTapeTurn("early end", 'W'); return; }
+        // Before half the expected distance a lost line cannot be the bar: the line slid off the
+        // array (channel 7, the right-most, is dead). Search for it instead of stopping.
+        if ((encOk && d < 0.5f * s.expM) || d < flickerUntilM) { startTapeTurn("line lost", 'W'); return; }
         eventSeen(inWindow, s.ev == Ev::MAIN_LINE ? BRANCH_ROLL_M * 0.5f : -UTURN_BACK_M);
         return;
     case Ev::BRANCH_R:
@@ -541,24 +595,55 @@ static void lineEnded()
         startTapeTurn("line lost", 'W');
         return;
     case Ev::CORNER:
-        if (early) { startTapeTurn("early end", 'W'); return; }
+        if (freeSign != 0 && NRLComms::isHeadingReady() && fabsf(gridErr()) > OFF_COURSE_DEG)
+        {
+            fault("off course");   // the line ended while the robot faces the wrong way: stop
+            return;
+        }
+        if (early || d < flickerUntilM) { startTapeTurn("early end", 'W'); return; }
         eventSeen(inWindow, TURN_ROLL_M);
         return;
     }
 }
 
-// True when the array shows a branch on `side` (+1 right, -1 left) with the line still ahead.
-// Strict on purpose: the SDK's own classifier must say BRANCH, or four neighbouring channels
-// from the centre out to the edge must all be dark (one 25 mm line cannot cover that).
+// How many channels the plain line normally covers (learned while following straight).
+static float normalDark = 3.0f;
+
+// True when the array shows a real branch on `side` (+1 right, -1 left).
+// A branch ADDS tape: the main line is still under the centre, the two outer channels on that
+// side are dark, AND the dark area is at least 2 channels wider than the plain line normally is.
+// (The old test trusted the SDK's RIGHT_BRANCH / LEFT_BRANCH label on its own; with channel 7
+// dead, a line sitting a little right of centre could get that label, so the robot "found" P1
+// before reaching it.)
 static bool branchOn(int side)
 {
-    const LinePattern p = line.pattern();
-    const bool right = side * STEER_SIGN > 0;
-    if (right && p == LinePattern::RIGHT_BRANCH) return true;
-    if (!right && p == LinePattern::LEFT_BRANCH) return true;
     const uint8_t m = line.mask();
-    if (right) return (m & 0x78) == 0x78;       // ch3, ch4, ch5, ch6 (ch7 is dead)
-    return (m & 0x0F) == 0x0F;                  // ch0, ch1, ch2, ch3
+    const int     c = line.count();
+    const bool right  = side * STEER_SIGN > 0;
+    const bool centre = (m & 0x18) != 0;                          // ch3 or ch4: main line still there
+    const bool edge   = right ? ((m & 0x60) == 0x60)              // ch5 and ch6 (ch7 is dead)
+                              : ((m & 0x03) == 0x03);             // ch0 and ch1
+    const bool wide   = c >= (int)(normalDark + 0.5f) + 2;
+    return centre && edge && wide;
+}
+
+// A bar across the array (end bar, or the main line met at a T): much wider than the plain line.
+static bool barSeen()
+{
+    if (line.pattern() == LinePattern::TERMINAL) return true;
+    int need = (int)(normalDark + 0.5f) + 3;
+    if (need < BAR_MIN_DARK) need = BAR_MIN_DARK;
+    return line.count() >= need;
+}
+
+// Last event's sensor picture for the screen: '#' = dark, '.' = light, channel 0 on the left.
+static char lastMaskStr[12] = "-";
+
+static void rememberMask()
+{
+    const uint8_t m = line.mask();
+    for (int i = 0; i < 8; i++) lastMaskStr[i] = (m & (1 << i)) ? '#' : '.';
+    lastMaskStr[8] = 0;
 }
 
 // One control tick of the whole run. Returns true when finished (DONE or FAULT).
@@ -593,6 +678,11 @@ static bool runTick()
                 speed = FOLLOW_SPEED - f * (FOLLOW_SPEED - CREEP_SPEED);
             }
         }
+        if (s.ev == Ev::END_BAR)                              // slow and steady toward a core
+        {
+            if (speed > TERMINAL_SPEED) speed = TERMINAL_SPEED;
+            if (!encOk || d >= s.expM - BAR_CREEP_M) speed = BAR_CREEP_SPEED;
+        }
         const LinePattern p = line.pattern();
         const bool inWindow = encOk && fabsf(d - s.expM) <= WINDOW_M;
         const bool late     = encOk && d > s.expM + WINDOW_M;
@@ -617,9 +707,7 @@ static bool runTick()
         tBox = 0;
 
         // END_BAR / MAIN_LINE: a bar across the line (many channels dark).
-        const int needDark = (s.ev == Ev::END_BAR) ? BAR_COUNT : WIDE_COUNT;
-        if ((s.ev == Ev::END_BAR || s.ev == Ev::MAIN_LINE) && barStarted &&
-            (p == LinePattern::TERMINAL || line.count() >= needDark))
+        if ((s.ev == Ev::END_BAR || s.ev == Ev::MAIN_LINE) && barStarted && d >= flickerUntilM && barSeen())
         {
             if (encOk && d < s.expM - WINDOW_M) why = (s.ev == Ev::END_BAR) ? "bar early" : "main early";
             eventSeen(true, s.ev == Ev::MAIN_LINE ? BRANCH_ROLL_M : -UTURN_BACK_M);   // a bar: the tape decides
@@ -647,19 +735,79 @@ static bool runTick()
             }
         }
 
-        // Line gone: drive straight on slowly, and after LOST_TICKS treat it as the line ending.
+        // Known junction on this leg (P / D branches we pass): drive straight across it, square to
+        // the grid by gyro. The tape is ignored here, so a branch can never pull the robot off.
+        if (encOk)
+        {
+            int zi = -1;
+            for (int i = 0; i < 3; i++)
+                if (s.cross[i] > 0.0f && fabsf(d - s.cross[i]) <= CROSS_ZONE_M) zi = i;
+            if (zi >= 0)
+            {
+                // The tape sees the junction (line much wider than normal): count it, and correct
+                // the encoder distance to its known position (array on its near edge).
+                if (!anchored[zi] && (p == LinePattern::TERMINAL || line.count() >= (int)(normalDark + 0.5f) + 2))
+                {
+                    anchored[zi] = true;
+                    jxSeen++;
+                    const float target = s.cross[zi] - LINE_HALF_M;
+                    const int32_t shift = (int32_t)((d - target) * CPM);
+                    legL += shift;
+                    legR += shift;
+                }
+                float t = 0.0f;
+                if (freeSign != 0 && gyroOk)
+                {
+                    t = -freeSign * HOLD_KP * gridErr();
+                    if (t >  HOLD_MAX) t =  HOLD_MAX;
+                    if (t < -HOLD_MAX) t = -HOLD_MAX;
+                }
+                drive.drive(JUNCTION_SPEED, t);
+                lastSteer = t;
+                lostTicks = 0;
+                crossing = true;                               // re-start the steering cleanly after
+                tCross = now;
+                return false;
+            }
+        }
+
+        // Line gone.
         if (!line.onLine())
         {
+            if (lostTicks == 0) tLost = now;
             lostTicks++;
-            drive.drive(APPROACH_SPEED, 0.0f);
-            if (lostTicks >= LOST_TICKS) lineEnded();
+            const bool endExpected =
+                (s.ev == Ev::CORNER && !(encOk && d < s.expM - WINDOW_M)) ||
+                ((s.ev == Ev::END_BAR || s.ev == Ev::MAIN_LINE) && barStarted);
+            if (endExpected)
+            {
+                // A real line end is due here: straight on slowly, then treat it as the end.
+                drive.drive(APPROACH_SPEED, 0.0f);
+                if (lostTicks >= LOST_TICKS) lineEnded();
+                return false;
+            }
+            // No end expected (e.g. on a terminal): the line slid off an edge. Keep creeping and
+            // steer gently toward where it was last seen - no stop. Only if that fails, search.
+            if (now - tLost < SOFT_LOST_MS)
+            {
+                const int side = line.lastSeenSide();
+                const float t = (side != 0) ? STEER_SIGN * side * SOFT_TURN : 0.0f;
+                drive.drive(CREEP_SPEED * 0.8f, t);
+                lastSteer = t;
+                return false;
+            }
+            lineEnded();
             return false;
         }
         lostTicks = 0;
 
         // Any other branch: cross it straight, no steering.
-        const bool branch = (p == LinePattern::LEFT_BRANCH || p == LinePattern::RIGHT_BRANCH ||
-                             p == LinePattern::TERMINAL || line.count() >= 4);
+        // Only legs on the main line have branches to cross; a terminal (END_BAR / MAIN_LINE step)
+        // has none, so steering is never switched off there. Width only: with channel 7 dead the
+        // SDK's LEFT/RIGHT_BRANCH labels can appear on a plain off-centre line.
+        const bool canCross = (s.ev == Ev::CORNER || s.ev == Ev::BRANCH_R || s.ev == Ev::BRANCH_L || s.ev == Ev::BOX);
+        const bool branch = canCross &&
+                            (p == LinePattern::TERMINAL || line.count() >= (int)(normalDark + 0.5f) + 2);
         if (branch)
         {
             if (!crossing) { crossing = true; tCross = now; }
@@ -675,6 +823,10 @@ static bool runTick()
             steer.reset();
             lastSteer = 0.0f;
         }
+
+        // Learn how wide the plain line looks (for the branch test).
+        if (p == LinePattern::LINE && abs(line.error()) < 1500)
+            normalDark += 0.05f * ((float)line.count() - normalDark);
 
         // Normal gentle following.
         const float err = (float)line.error() / 3500.0f;
@@ -712,7 +864,7 @@ static bool runTick()
     {
         // The robot is stopped. The tape must confirm the event before anything turns.
         const Step &s = step();
-        const bool wide = line.pattern() == LinePattern::TERMINAL || line.count() >= WIDE_COUNT;
+        const bool wide = barSeen();
         switch (s.ev)
         {
         case Ev::CORNER:
@@ -824,12 +976,38 @@ static bool runTick()
             enter(St::GRID_ALIGN);
             return false;
         }
+        if (line.onLine())
+        {
+            // Square to the grid now, so any line offset is sideways only: it shows how far the
+            // pivot was from the junction. Learn from it for the next turn of the same kind.
+            lastTurnErr = line.error();
+            if (lastLocated && fabsf(e) <= GRID_TOL_DEG * 2.0f)
+            {
+                const float off   = (float)lastTurnErr / 1000.0f * SENSOR_PITCH_M;   // + = line right
+                const float delta = lastLocDir * off;                                // + = turned too late
+                float *t = lastLocCorner ? &learnCorner : &learnBranch[lastLocDir > 0 ? 1 : 0];
+                *t -= LEARN_GAIN * delta;
+                if (*t >  LEARN_MAX_M) *t =  LEARN_MAX_M;
+                if (*t < -LEARN_MAX_M) *t = -LEARN_MAX_M;
+            }
+            lastLocated = false;
+        }
+        if (line.onLine() && abs(line.error()) > LATERAL_MAX)  // square but line near an edge:
+        {                                                      // twist toward it a little first
+            centreTarget = LATERAL_OK;
+            centrePasses = 0;
+            centreDir = (line.error() > 0) ? STEER_SIGN : -STEER_SIGN;
+            centreFlipped = false;
+            enter(St::CENTRE);
+            return false;
+        }
         if (line.onLine())                                     // square and on the tape: go
         {
             startLeg();
             enter(St::FOLLOW);
             return false;
         }
+        centreTarget = CENTRE_ERR;
         why = "no line after squaring";                        // square but no tape: tape search
         enter(St::CENTRE_CHECK);
         return false;
@@ -946,7 +1124,7 @@ static bool runTick()
     case St::CENTRE_CHECK:
     {
         // Robot is still. Centred enough (or out of passes): start the next step from here.
-        const bool centred = line.onLine() && abs(line.error()) <= CENTRE_ERR;
+        const bool centred = line.onLine() && abs(line.error()) <= centreTarget;
         if (centred || centrePasses >= CENTRE_PASSES)
         {
             startLeg();                                        // distance counts from here
@@ -975,7 +1153,7 @@ static bool runTick()
         }
         const int err = line.error();
         const int errDir = (err > 0) ? STEER_SIGN : -STEER_SIGN;
-        if (abs(err) <= CENTRE_ERR || errDir != centreDir || now - tState > CENTRE_MAX_MS)
+        if (abs(err) <= centreTarget || errDir != centreDir || now - tState > CENTRE_MAX_MS)
         {
             stopThen(St::CENTRE_CHECK);
             return false;
@@ -990,7 +1168,7 @@ static bool runTick()
         unsigned long minMs = TAPE_MIN_MS;
         if (mode == 'W' || mode == 'V') minMs = 0;
         else if (targetDeg > 135.0f)     minMs = UTURN_MIN_MS;
-        const bool onBar = line.count() >= BAR_COUNT;
+        const bool onBar = barSeen();
         if (now - tState >= minMs && line.onLine() && !onBar && abs(line.error()) <= TAPE_ACCEPT_ERR)
         {
             drive.stop();
@@ -1125,6 +1303,8 @@ public:
         encOk = true;
         runStart = millis();
         tLastCount = runStart;
+        normalDark = 3.0f;
+        lastMaskStr[0] = '-'; lastMaskStr[1] = 0;
 
         runAction(sequential({
             lineActions.leaveBox(),                                     // SDK: straight out of the box
@@ -1157,8 +1337,14 @@ public:
         telemetry.addData("leg", legLine);
         telemetry.addData("d cm", dLine);
         telemetry.addData("turns", turnsLog[0] ? turnsLog : "-");
-        telemetry.addData("deg", lastDeg);
-        telemetry.addData("enc", encOk ? "ok" : "OFF");
+        static char maskLine[16];
+        snprintf(maskLine, sizeof(maskLine), "%s %d", lastMaskStr, lastTurnErr);
+        telemetry.addData("mask", maskLine);   // last event: sensors 0..7, and where the line landed after the last turn
+        static char jxLine[16];
+        int jxExp = 0;
+        for (int i = 0; i < 3; i++) if (step().cross[i] > 0.0f) jxExp++;
+        snprintf(jxLine, sizeof(jxLine), "%d/%d%s", jxSeen, jxExp, encOk ? "" : " encOFF");
+        telemetry.addData("jx", jxLine);       // junctions crossed on this leg / expected
         telemetry.addData("t", (float)(elapsed / 1000));
     }
 
