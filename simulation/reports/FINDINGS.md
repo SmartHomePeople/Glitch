@@ -118,3 +118,34 @@ the report, section 7. They are untested paths, not proven wrong.
 2. **Sensor pitch**: centre-to-centre distance of the IR channels. It sets how far off the line can be after a turn.
 3. **Wheelbase** (front-to-rear axle). It is only used for the "all wheels in PARK" check.
 4. One filmed C1 turn: where the chassis middle ends up relative to the corner.
+
+## SIM2 firmware changes (2026-11-20), tested in this simulator
+
+Three small changes went into `AutoPark.cpp`; search for `SIM2` in the file to see each one.
+
+1. **ADJUST trim (F1).** After the ADJUST stop, the firmware checks whether the encoders show it more than **2.5 cm** off
+   the turning spot. If so, it makes one slow correction move (TRIM_SPEED 0.17) before turning.
+   This fixes the coast overshoot, scenario 13.
+   A 1.5 cm threshold was tried first and was rejected: it hid errors from `learnCorner`, which lost 3-4 runs in 40 under 5x sensor noise.
+2. **One-dead-encoder check (F2).** During the straight-only moves (LEAVE, ADJUST, BACKUP, PARK IN), if one side
+   counts 40 or more pulses while the other counts 3 or fewer, the firmware switches to `encOk = false`, the tape-only mode.
+3. **LEAVE blink (F3).** If 6 or more channels read dark again in phase 1, the robot is still over the box,
+   so LEAVE goes back to phase 0.
+
+A fourth change, "re-square before following if more than 20 deg off the grid", was tested and **removed**: it changed nothing.
+
+Comparison on the same seeds. Previous = the version before SIM2.
+
+| | previous | SIM2 |
+|---|---|---|
+| Park Run, 200 randomised robots | 200/200 | 200/200 |
+| P1-D1, 200 randomised robots | 192/200 (45 recoveries) | 195/200 (26 recoveries) |
+| Park Run, one encoder dead (L / R, 10 seeds) | 0 / 0 | 10 / 10 |
+| Park Run, slow motor response | 0/10 | 10/10 |
+| P1-D1, slow motor response | 0/10 | 9/10 |
+| Park Run / P1-D1, intermittent line loss | 8 / 6 of 10 | 9 / 8 of 10 |
+| any of the 22 scenarios worse | - | **none** |
+| nominal Park Run time | 38.2 s | 38.4 s |
+
+Not fixed: F4 (LOCATE fallback after a very long coast; scenario 22 now ends in a safe FAULT stop instead of wandering off),
+and P1-D1 under heavy gyro drift (0.5 deg/s; fails before and after).
