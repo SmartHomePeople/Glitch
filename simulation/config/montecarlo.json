@@ -1,0 +1,19 @@
+{
+  "_doc": "Monte Carlo randomisation around the NOMINAL robot. Each run draws every value independently: uniform in [lo, hi] (absolute) or, for 'mul', the nominal value times a uniform factor. These ranges are ASSUMPTIONS about how much Pixel and the mat vary - they are not measured.",
+  "uniform": {
+    "thr_straight_l": {"add": [-2, 2]}, "thr_straight_r": {"add": [-2, 2]},
+    "thr_pivot_l": {"add": [-3, 3]}, "thr_pivot_r": {"add": [-3, 3]},
+    "motor_gain_l": {"mul": [0.95, 1.05]}, "motor_gain_r": {"mul": [0.95, 1.05]},
+    "skid_factor": {"mul": [0.9, 1.1]},
+    "tau_up_s": {"mul": [0.7, 1.4]}, "tau_down_s": {"mul": [0.7, 1.4]}, "tau_coast_s": {"mul": [0.7, 1.6]},
+    "slip_long": {"lohi": [0.94, 1.0]},
+    "enc_cpm_l": {"mul": [0.97, 1.03]}, "enc_cpm_r": {"mul": [0.97, 1.03]},
+    "raw_noise": {"lohi": [20, 120]},
+    "sensor_pitch_m": {"lohi": [0.008, 0.012]},
+    "sensor_lateral_offset_m": {"lohi": [-0.003, 0.003]},
+    "gyro_drift_dps": {"lohi": [-0.1, 0.1]},
+    "gyro_noise_deg": {"lohi": [0.02, 0.15]},
+    "start_x_m": {"add": [-0.02, 0.02]}, "start_y_m": {"add": [-0.01, 0.01]},
+    "start_heading_deg": {"lohi": [-2, 2]}
+  }
+}

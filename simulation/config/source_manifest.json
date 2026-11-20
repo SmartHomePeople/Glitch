@@ -1,0 +1,20 @@
+{
+ "_doc": "SHA-256 of the sources the simulator evidence is based on. If any changes, re-run the suite (python3 main.py suite) and accept with: python3 main.py audit --accept",
+ "note": "initial: repo V3 8005f0d",
+ "sha256": {
+  "RobotFirmware/opmodes/AutoPark.cpp": "1f4ebdb127f5e2728865e43a7caaf52ca3b3a10d155d4b9a0b2b53e2ed355848",
+  "sdk/HexaPID.h": "c710251b95ca9683d69b3ffb023afabb76a3357ef862327ef80f94d494af20a7",
+  "sdk/LineTuning.h": "e978a1a774df7fb68dec267ab2061002ee85f4ff542717bdb1f21b4ed629a239",
+  "sdk/LineActions.h": "6a8b1c9075da0f948857c62ecf7f0414043acf01270992929f8ee3c8cebdff7c",
+  "sdk/TankDrive.h": "cf85ee17301624370467c0b84bf17bd2e99dbe234b2e7b170417786484af06a3",
+  "sdk/NRLOpMode.h": "f65242d90167b10564d408dfa03be3d47fa3fafe23a035d760beb3553ca3f41f",
+  "sdk/NRLAction.h": "fb7f9077ff8b84991c091522b2c1b7026959406e3b5785b31dae10ceca8bb7d8",
+  "sdk/NRLComms.h": "42010bb04db35fb62cb4691391ae045cd07416ee410e0bbfb7710548e67de531",
+  "sdk/BoardPins.h": "16ef1764995380e35f40c16b4bf3913c102c14278136b7bd264ca66e93d36fc7",
+  "sdk/OpModeRegistry.h": "efe65be979ef1e4e68a187c4df43cc12829d450f014409addd8e58233c9b7be4",
+  "sdk/HexaLineArray.h": "a9e5a24076d13401a1541e2e76261330049a5d04ce46c64df108da211fa08401",
+  "sdk/HexaDCMotor.h": "e1c09f2f31a37979f9e44912b156e59556569d575b88089234c0d65436f65b83",
+  "simulation/core/sdk/NRL.h": "96715059a8ba718b55714b0d73b31aa1ed08a5028ebaa6f58e5420a30050a04e",
+  "simulation/core/sim_core.cpp": "93382d32208a0fa1ee7544f395dc1be25a77908c8da432224166b0bf0341792f"
+ }
+}

@@ -1,0 +1,2476 @@
+{
+ "generated": "2026-11-20T06:32:34",
+ "platform": "Linux-6.18.44-fc-v726-x86_64-with-glibc2.39",
+ "firmware": {
+  "under test": {
+   "path": "/mnt/user-data/outputs/RobotFirmware/opmodes/AutoPark.cpp",
+   "sha256": "bb6793db9c27b151cede136a47e0409b9ffd987a6d972a26419779d3c300c8fa",
+   "runs": {
+    "Park Run": {
+     "suite": [
+      {
+       "id": 1,
+       "name": "Ideal conditions",
+       "means": "all 8 channels work, no noise, symmetric motors and encoders",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.5
+      },
+      {
+       "id": 2,
+       "name": "Sensor channel 7 dead",
+       "means": "ideal, except channel 7 reads white always (as on Pixel)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.3
+      },
+      {
+       "id": 3,
+       "name": "Sensor noise",
+       "means": "5x the nominal ADC noise",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.5
+      },
+      {
+       "id": 4,
+       "name": "Encoder left disconnected",
+       "means": "left encoder never pulses",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 2,
+       "fail": 1,
+       "runs": 3,
+       "why": "run ended FAULT (no line) / run ended FAULT (no line); left the route by 641 mm; 2 turn(s) away from any planned turn point / run ended FAULT (off course)",
+       "time": 18.0
+      },
+      {
+       "id": 5,
+       "name": "Encoder right disconnected",
+       "means": "right encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (off course)",
+       "time": 12.4
+      },
+      {
+       "id": 6,
+       "name": "Both encoders disconnected",
+       "means": "no distance at all",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 27.0
+      },
+      {
+       "id": 7,
+       "name": "Gyro unavailable",
+       "means": "isHeadingReady() never true",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 34.4
+      },
+      {
+       "id": 8,
+       "name": "Gyro drift",
+       "means": "0.5 deg/s drift (25x nominal)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 39.7
+      },
+      {
+       "id": 9,
+       "name": "Left motor weaker",
+       "means": "left side 15% weaker",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 37.5
+      },
+      {
+       "id": 10,
+       "name": "Right motor weaker",
+       "means": "right side 10% weaker than left (instead of 5% stronger)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 36.5
+      },
+      {
+       "id": 11,
+       "name": "Low motor speed",
+       "means": "both sides 25% slower (low battery); start thresholds unchanged",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 40.7
+      },
+      {
+       "id": 12,
+       "name": "High motor speed",
+       "means": "both sides 25% faster (fresh battery / lighter robot)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 34.3
+      },
+      {
+       "id": 13,
+       "name": "Excessive motor ramp",
+       "means": "motors+chassis respond 3x slower. The firmware's own RAMP_RATE is NOT changed (that would be editing the controller)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (off course); left the route by 367 mm / run ended FAULT (off course); left the route by 385 mm / run ended FAULT (off course); left the route by 450 mm",
+       "time": 18.0
+      },
+      {
+       "id": 14,
+       "name": "Incorrect start position",
+       "means": "placed 12 cm back and 3 cm left of the START centre",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 36.6
+      },
+      {
+       "id": 15,
+       "name": "Incorrect start heading",
+       "means": "placed turned 6 deg left",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 40.2
+      },
+      {
+       "id": 16,
+       "name": "Slight lateral sensor offset",
+       "means": "sensor bar mounted 6 mm left of the chassis centre line",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.5
+      },
+      {
+       "id": 17,
+       "name": "Starts too close to the edge of Start",
+       "means": "chassis 15 cm forward: sensor bar 2 cm from the box's front edge",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.2
+      },
+      {
+       "id": 18,
+       "name": "Intermittent line loss",
+       "means": "about once a second all channels read white for 50 ms",
+       "verdict": "FAIL",
+       "pass": 1,
+       "safe": 0,
+       "fail": 2,
+       "runs": 3,
+       "why": "run ended FAULT (no line); 2 turn(s) away from any planned turn point",
+       "time": 15.9
+      },
+      {
+       "id": 19,
+       "name": "Corner detected earlier than expected",
+       "means": "encoders under-count 8%: corners arrive ~15 cm before the firmware's prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.0
+      },
+      {
+       "id": 20,
+       "name": "Corner detected later than expected",
+       "means": "encoders over-count 8%: corners arrive ~15 cm after the prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.8
+      },
+      {
+       "id": 21,
+       "name": "Park Zone detected late",
+       "means": "PARK box 10 cm further from C4 than LAST_LEG_M says",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 35.8
+      },
+      {
+       "id": 22,
+       "name": "Robot overshoots the Park Zone",
+       "means": "long coast after stop() (slippery mat): the robot rolls on",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 345 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 353 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 552 mm; 3 turn(s) away from any planned turn point; spun 242 deg in one go (limit 210)",
+       "time": 17.0
+      }
+     ],
+     "mc": {
+      "runs": 60,
+      "passed": 60,
+      "success_rate": 1.0,
+      "safe_fail": 0,
+      "fail": 0,
+      "time_mean_s": 36.99,
+      "time_min_s": 32.36,
+      "time_max_s": 43.96,
+      "lateral_err_mean_mm": 6.82,
+      "lateral_err_max_mm": 19.6,
+      "heading_err_mean_deg": 1.72,
+      "heading_err_max_deg": 6.15,
+      "recoveries_total": 1,
+      "faults_total": 0,
+      "max_line_error": 3500,
+      "missed_turns_total": 0,
+      "incorrect_turns_total": 0,
+      "failure_reasons": {}
+     },
+     "mc_png": "mc_paths_fw_ParkRun.png",
+     "mc_failures": []
+    },
+    "P1-D1 Run": {
+     "suite": [
+      {
+       "id": 1,
+       "name": "Ideal conditions",
+       "means": "all 8 channels work, no noise, symmetric motors and encoders",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 67.8
+      },
+      {
+       "id": 2,
+       "name": "Sensor channel 7 dead",
+       "means": "ideal, except channel 7 reads white always (as on Pixel)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 67.7
+      },
+      {
+       "id": 3,
+       "name": "Sensor noise",
+       "means": "5x the nominal ADC noise",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 70.1
+      },
+      {
+       "id": 4,
+       "name": "Encoder left disconnected",
+       "means": "left encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch) / run ended FAULT (no line at turn)",
+       "time": 36.1
+      },
+      {
+       "id": 5,
+       "name": "Encoder right disconnected",
+       "means": "right encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line)",
+       "time": 16.0
+      },
+      {
+       "id": 6,
+       "name": "Both encoders disconnected",
+       "means": "no distance at all",
+       "verdict": "FAIL",
+       "pass": 1,
+       "safe": 0,
+       "fail": 2,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 492 mm; 6 turn(s) away from any planned turn point",
+       "time": 49.3
+      },
+      {
+       "id": 7,
+       "name": "Gyro unavailable",
+       "means": "isHeadingReady() never true",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 65.9
+      },
+      {
+       "id": 8,
+       "name": "Gyro drift",
+       "means": "0.5 deg/s drift (25x nominal)",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch)",
+       "time": 32.2
+      },
+      {
+       "id": 9,
+       "name": "Left motor weaker",
+       "means": "left side 15% weaker",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 86.8
+      },
+      {
+       "id": 10,
+       "name": "Right motor weaker",
+       "means": "right side 10% weaker than left (instead of 5% stronger)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 73.1
+      },
+      {
+       "id": 11,
+       "name": "Low motor speed",
+       "means": "both sides 25% slower (low battery); start thresholds unchanged",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 81.6
+      },
+      {
+       "id": 12,
+       "name": "High motor speed",
+       "means": "both sides 25% faster (fresh battery / lighter robot)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 65.1
+      },
+      {
+       "id": 13,
+       "name": "Excessive motor ramp",
+       "means": "motors+chassis respond 3x slower. The firmware's own RAMP_RATE is NOT changed (that would be editing the controller)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch); left the route by 313 mm / run ended FAULT (missed branch); left the route by 316 mm / run ended FAULT (missed branch); left the route by 319 mm",
+       "time": 18.1
+      },
+      {
+       "id": 14,
+       "name": "Incorrect start position",
+       "means": "placed 12 cm back and 3 cm left of the START centre",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 70.2
+      },
+      {
+       "id": 15,
+       "name": "Incorrect start heading",
+       "means": "placed turned 6 deg left",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 75.9
+      },
+      {
+       "id": 16,
+       "name": "Slight lateral sensor offset",
+       "means": "sensor bar mounted 6 mm left of the chassis centre line",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 67.0
+      },
+      {
+       "id": 17,
+       "name": "Starts too close to the edge of Start",
+       "means": "chassis 15 cm forward: sensor bar 2 cm from the box's front edge",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 69.2
+      },
+      {
+       "id": 18,
+       "name": "Intermittent line loss",
+       "means": "about once a second all channels read white for 50 ms",
+       "verdict": "FAIL",
+       "pass": 1,
+       "safe": 0,
+       "fail": 2,
+       "runs": 3,
+       "why": "run ended FAULT (no line); 2 turn(s) away from any planned turn point",
+       "time": 28.8
+      },
+      {
+       "id": 19,
+       "name": "Corner detected earlier than expected",
+       "means": "encoders under-count 8%: corners arrive ~15 cm before the firmware's prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 67.8
+      },
+      {
+       "id": 20,
+       "name": "Corner detected later than expected",
+       "means": "encoders over-count 8%: corners arrive ~15 cm after the prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 69.9
+      },
+      {
+       "id": 21,
+       "name": "Park Zone detected late",
+       "means": "PARK box 10 cm further from C4 than LAST_LEG_M says",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 69.8
+      },
+      {
+       "id": 22,
+       "name": "Robot overshoots the Park Zone",
+       "means": "long coast after stop() (slippery mat): the robot rolls on",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch); left the route by 344 mm; 1 turn(s) away from any planned turn point / run ended FAULT (missed branch); left the route by 350 mm; 1 turn(s) away from any planned turn point / run ended FAULT (missed branch); left the route by 363 mm; 1 turn(s) away from any planned turn point",
+       "time": 12.4
+      }
+     ],
+     "mc": {
+      "runs": 60,
+      "passed": 58,
+      "success_rate": 0.967,
+      "safe_fail": 0,
+      "fail": 2,
+      "time_mean_s": 72.98,
+      "time_min_s": 63.83,
+      "time_max_s": 84.54,
+      "lateral_err_mean_mm": 7.54,
+      "lateral_err_max_mm": 21.9,
+      "heading_err_mean_deg": 1.91,
+      "heading_err_max_deg": 5.88,
+      "recoveries_total": 4,
+      "faults_total": 2,
+      "max_line_error": 3500,
+      "missed_turns_total": 0,
+      "incorrect_turns_total": 5,
+      "failure_reasons": {
+       "run ended FAULT (no line)": 2
+      }
+     },
+     "mc_png": "mc_paths_fw_P1D1Run.png",
+     "mc_failures": [
+      {
+       "seed": 1030,
+       "reason": "run ended FAULT (no line); 1 turn(s) away from any planned turn point",
+       "events_tail": [
+        "42.18 STATE VERIFY -> LOCATE [P1 back exp 26] why=off window @(1.995,1.987,93.4deg)",
+        "42.72 STATE LOCATE -> ADJUST [P1 back exp 26] why=edge not found @(2.000,1.835,91.0deg)",
+        "42.97 STATE ADJUST -> STOP [P1 back exp 26] why=edge not found @(2.001,1.741,89.5deg)",
+        "43.77 STATE STOP -> TAPE TURN [P1 back exp 26] why=edge not found @(2.000,1.692,88.7deg)",
+        "45.34 STATE TAPE TURN -> FAULT [P1 back exp 26] why=no line @(1.973,1.677,-32.1deg)",
+        "47.34 END FAULT"
+       ]
+      },
+      {
+       "seed": 1055,
+       "reason": "run ended FAULT (no line); left the route by 442 mm; 4 turn(s) away from any planned turn point",
+       "events_tail": [
+        "57.81 STATE VERIFY -> LOCATE [D1 back exp 26] why=off window @(1.982,2.003,356.4deg)",
+        "58.34 STATE LOCATE -> ADJUST [D1 back exp 26] why=edge not found @(1.831,2.014,355.4deg)",
+        "58.57 STATE ADJUST -> STOP [D1 back exp 26] why=edge not found @(1.744,2.021,354.8deg)",
+        "59.37 STATE STOP -> TAPE TURN [D1 back exp 26] why=edge not found @(1.700,2.025,354.5deg)",
+        "60.89 STATE TAPE TURN -> FAULT [D1 back exp 26] why=no line @(1.716,2.048,475.7deg)",
+        "62.89 END FAULT"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "comparison": {
+   "path": "/home/claude/smarthomepeople/glitch/RobotFirmware/opmodes/AutoPark.cpp",
+   "sha256": "1f4ebdb127f5e2728865e43a7caaf52ca3b3a10d155d4b9a0b2b53e2ed355848",
+   "runs": {
+    "Park Run": {
+     "suite": [
+      {
+       "id": 1,
+       "name": "Ideal conditions",
+       "means": "all 8 channels work, no noise, symmetric motors and encoders",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.6
+      },
+      {
+       "id": 2,
+       "name": "Sensor channel 7 dead",
+       "means": "ideal, except channel 7 reads white always (as on Pixel)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.7
+      },
+      {
+       "id": 3,
+       "name": "Sensor noise",
+       "means": "5x the nominal ADC noise",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 34.8
+      },
+      {
+       "id": 4,
+       "name": "Encoder left disconnected",
+       "means": "left encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 8.0
+      },
+      {
+       "id": 5,
+       "name": "Encoder right disconnected",
+       "means": "right encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 7.9
+      },
+      {
+       "id": 6,
+       "name": "Both encoders disconnected",
+       "means": "no distance at all",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 29.6
+      },
+      {
+       "id": 7,
+       "name": "Gyro unavailable",
+       "means": "isHeadingReady() never true",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 31.8
+      },
+      {
+       "id": 8,
+       "name": "Gyro drift",
+       "means": "0.5 deg/s drift (25x nominal)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 42.9
+      },
+      {
+       "id": 9,
+       "name": "Left motor weaker",
+       "means": "left side 15% weaker",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 814 mm",
+       "time": 2.7
+      },
+      {
+       "id": 10,
+       "name": "Right motor weaker",
+       "means": "right side 10% weaker than left (instead of 5% stronger)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 33.6
+      },
+      {
+       "id": 11,
+       "name": "Low motor speed",
+       "means": "both sides 25% slower (low battery); start thresholds unchanged",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 40.5
+      },
+      {
+       "id": 12,
+       "name": "High motor speed",
+       "means": "both sides 25% faster (fresh battery / lighter robot)",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 40.4
+      },
+      {
+       "id": 13,
+       "name": "Excessive motor ramp",
+       "means": "motors+chassis respond 3x slower. The firmware's own RAMP_RATE is NOT changed (that would be editing the controller)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "DONE but only 3/4 wheels inside PARK (pose (629.7, -98.2, -16.9)) / DONE but only 3/4 wheels inside PARK (pose (630.8, -99.6, -17.2)) / DONE but only 3/4 wheels inside PARK (pose (636.2, -78.9, -13.4))",
+       "time": 69.4
+      },
+      {
+       "id": 14,
+       "name": "Incorrect start position",
+       "means": "placed 12 cm back and 3 cm left of the START centre",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 822 mm",
+       "time": 2.5
+      },
+      {
+       "id": 15,
+       "name": "Incorrect start heading",
+       "means": "placed turned 6 deg left",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 834 mm",
+       "time": 2.4
+      },
+      {
+       "id": 16,
+       "name": "Slight lateral sensor offset",
+       "means": "sensor bar mounted 6 mm left of the chassis centre line",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.9
+      },
+      {
+       "id": 17,
+       "name": "Starts too close to the edge of Start",
+       "means": "chassis 15 cm forward: sensor bar 2 cm from the box's front edge",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.5
+      },
+      {
+       "id": 18,
+       "name": "Intermittent line loss",
+       "means": "about once a second all channels read white for 50 ms",
+       "verdict": "SAFE FAIL",
+       "pass": 2,
+       "safe": 1,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line)",
+       "time": 37.4
+      },
+      {
+       "id": 19,
+       "name": "Corner detected earlier than expected",
+       "means": "encoders under-count 8%: corners arrive ~15 cm before the firmware's prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.9
+      },
+      {
+       "id": 20,
+       "name": "Corner detected later than expected",
+       "means": "encoders over-count 8%: corners arrive ~15 cm after the prediction",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.9
+      },
+      {
+       "id": 21,
+       "name": "Park Zone detected late",
+       "means": "PARK box 10 cm further from C4 than LAST_LEG_M says",
+       "verdict": "PASS",
+       "pass": 3,
+       "safe": 0,
+       "fail": 0,
+       "runs": 3,
+       "why": "parked: all 4 wheels inside PARK on every seed",
+       "time": 32.9
+      },
+      {
+       "id": 22,
+       "name": "Robot overshoots the Park Zone",
+       "means": "long coast after stop() (slippery mat): the robot rolls on",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 335 mm; 3 turn(s) away from any planned turn point; spun 252 deg in one go (limit 210) / run ended FAULT (no line); left the route by 336 mm; 3 turn(s) away from any planned turn point; spun 251 deg in one go (limit 210) / run ended FAULT (no line); left the route by 339 mm; 3 turn(s) away from any planned turn point; spun 251 deg in one go (limit 210)",
+       "time": 17.3
+      }
+     ],
+     "mc": {
+      "runs": 60,
+      "passed": 47,
+      "success_rate": 0.783,
+      "safe_fail": 0,
+      "fail": 13,
+      "time_mean_s": 40.79,
+      "time_min_s": 30.59,
+      "time_max_s": 63.129999999999995,
+      "lateral_err_mean_mm": 9.52,
+      "lateral_err_max_mm": 30.2,
+      "heading_err_mean_deg": 2.17,
+      "heading_err_max_deg": 6.25,
+      "recoveries_total": 4,
+      "faults_total": 0,
+      "max_line_error": 3500,
+      "missed_turns_total": 0,
+      "incorrect_turns_total": 0,
+      "failure_reasons": {
+       "run ended LEFT FIELD": 13
+      }
+     },
+     "mc_png": "mc_paths_cmp_ParkRun.png",
+     "mc_failures": [
+      {
+       "seed": 1007,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 807 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.435,0.008,0.5deg)",
+        "1.01 TURN log=- @(1.435,0.008,0.5deg)",
+        "1.01 STEP C1 exp 28 @(1.435,0.008,0.5deg)",
+        "3.35 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1008,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 849 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.436,-0.008,-1.1deg)",
+        "1.01 TURN log=- @(1.436,-0.008,-1.1deg)",
+        "1.01 STEP C1 exp 28 @(1.436,-0.008,-1.1deg)",
+        "3.46 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1011,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 828 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.431,0.007,1.3deg)",
+        "1.01 TURN log=- @(1.431,0.007,1.3deg)",
+        "1.01 STEP C1 exp 28 @(1.431,0.007,1.3deg)",
+        "3.27 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1017,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 814 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.433,0.010,0.6deg)",
+        "1.01 TURN log=- @(1.433,0.010,0.6deg)",
+        "1.01 STEP C1 exp 28 @(1.433,0.010,0.6deg)",
+        "3.44 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1023,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 818 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.434,-0.005,1.5deg)",
+        "1.01 TURN log=- @(1.434,-0.005,1.5deg)",
+        "1.01 STEP C1 exp 28 @(1.434,-0.005,1.5deg)",
+        "3.53 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1025,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 814 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.451,-0.010,-0.9deg)",
+        "1.01 TURN log=- @(1.451,-0.010,-0.9deg)",
+        "1.01 STEP C1 exp 28 @(1.451,-0.010,-0.9deg)",
+        "3.39 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1041,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 835 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.463,0.004,1.8deg)",
+        "1.01 TURN log=- @(1.463,0.004,1.8deg)",
+        "1.01 STEP C1 exp 28 @(1.463,0.004,1.8deg)",
+        "3.36 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1042,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 817 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.468,0.000,1.1deg)",
+        "1.01 TURN log=- @(1.468,0.000,1.1deg)",
+        "1.01 STEP C1 exp 28 @(1.468,0.000,1.1deg)",
+        "3.23 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1043,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 815 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.455,0.008,1.1deg)",
+        "1.01 TURN log=- @(1.455,0.008,1.1deg)",
+        "1.01 STEP C1 exp 28 @(1.455,0.008,1.1deg)",
+        "3.29 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1048,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 822 mm",
+       "events_tail": [
+        "1.00 START Park Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.470,0.010,-0.5deg)",
+        "1.01 TURN log=- @(1.470,0.010,-0.5deg)",
+        "1.01 STEP C1 exp 28 @(1.470,0.010,-0.5deg)",
+        "3.38 END LEFT FIELD"
+       ]
+      }
+     ]
+    },
+    "P1-D1 Run": {
+     "suite": [
+      {
+       "id": 1,
+       "name": "Ideal conditions",
+       "means": "all 8 channels work, no noise, symmetric motors and encoders",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 41.7
+      },
+      {
+       "id": 2,
+       "name": "Sensor channel 7 dead",
+       "means": "ideal, except channel 7 reads white always (as on Pixel)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 435 mm; 4 turn(s) away from any planned turn point",
+       "time": 62.8
+      },
+      {
+       "id": 3,
+       "name": "Sensor noise",
+       "means": "5x the nominal ADC noise",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn); left the route by 483 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 433 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 6 turn(s) away from any planned turn point",
+       "time": 54.6
+      },
+      {
+       "id": 4,
+       "name": "Encoder left disconnected",
+       "means": "left encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 8.0
+      },
+      {
+       "id": 5,
+       "name": "Encoder right disconnected",
+       "means": "right encoder never pulses",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 7.9
+      },
+      {
+       "id": 6,
+       "name": "Both encoders disconnected",
+       "means": "no distance at all",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 2,
+       "fail": 1,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch) / run ended FAULT (no line); left the route by 434 mm; 5 turn(s) away from any planned turn point",
+       "time": 23.3
+      },
+      {
+       "id": 7,
+       "name": "Gyro unavailable",
+       "means": "isHeadingReady() never true",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 436 mm; 5 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 449 mm; 6 turn(s) away from any planned turn point; spun 461 deg in one go (limit 300) / run ended FAULT (no line); left the route by 491 mm; 4 turn(s) away from any planned turn point; spun 420 deg in one go (limit 300)",
+       "time": 53.4
+      },
+      {
+       "id": 8,
+       "name": "Gyro drift",
+       "means": "0.5 deg/s drift (25x nominal)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch); left the route by 434 mm; 3 turn(s) away from any planned turn point / run ended FAULT (missed branch); left the route by 436 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line at turn); left the route by 483 mm; 3 turn(s) away from any planned turn point",
+       "time": 36.1
+      },
+      {
+       "id": 9,
+       "name": "Left motor weaker",
+       "means": "left side 15% weaker",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 319 mm",
+       "time": 2.7
+      },
+      {
+       "id": 10,
+       "name": "Right motor weaker",
+       "means": "right side 10% weaker than left (instead of 5% stronger)",
+       "verdict": "SAFE FAIL",
+       "pass": 1,
+       "safe": 2,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn)",
+       "time": 41.9
+      },
+      {
+       "id": 11,
+       "name": "Low motor speed",
+       "means": "both sides 25% slower (low battery); start thresholds unchanged",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch); 1 turn(s) away from any planned turn point / run ended FAULT (no line at turn); 1 turn(s) away from any planned turn point / run ended FAULT (no line at turn); 2 turn(s) away from any planned turn point",
+       "time": 33.8
+      },
+      {
+       "id": 12,
+       "name": "High motor speed",
+       "means": "both sides 25% faster (fresh battery / lighter robot)",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 443 mm; 4 turn(s) away from any planned turn point",
+       "time": 67.9
+      },
+      {
+       "id": 13,
+       "name": "Excessive motor ramp",
+       "means": "motors+chassis respond 3x slower. The firmware's own RAMP_RATE is NOT changed (that would be editing the controller)",
+       "verdict": "SAFE FAIL",
+       "pass": 0,
+       "safe": 3,
+       "fail": 0,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch) / run ended FAULT (no line)",
+       "time": 64.2
+      },
+      {
+       "id": 14,
+       "name": "Incorrect start position",
+       "means": "placed 12 cm back and 3 cm left of the START centre",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 497 mm",
+       "time": 2.5
+      },
+      {
+       "id": 15,
+       "name": "Incorrect start heading",
+       "means": "placed turned 6 deg left",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended LEFT FIELD; motors still driven at the end; left the route by 432 mm",
+       "time": 2.4
+      },
+      {
+       "id": 16,
+       "name": "Slight lateral sensor offset",
+       "means": "sensor bar mounted 6 mm left of the chassis centre line",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 434 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 435 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "time": 58.8
+      },
+      {
+       "id": 17,
+       "name": "Starts too close to the edge of Start",
+       "means": "chassis 15 cm forward: sensor bar 2 cm from the box's front edge",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 435 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "time": 58.5
+      },
+      {
+       "id": 18,
+       "name": "Intermittent line loss",
+       "means": "about once a second all channels read white for 50 ms",
+       "verdict": "FAIL",
+       "pass": 1,
+       "safe": 0,
+       "fail": 2,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn); left the route by 482 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "time": 56.4
+      },
+      {
+       "id": 19,
+       "name": "Corner detected earlier than expected",
+       "means": "encoders under-count 8%: corners arrive ~15 cm before the firmware's prediction",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn); left the route by 482 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 434 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 435 mm; 4 turn(s) away from any planned turn point",
+       "time": 52.9
+      },
+      {
+       "id": 20,
+       "name": "Corner detected later than expected",
+       "means": "encoders over-count 8%: corners arrive ~15 cm after the prediction",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line); left the route by 435 mm; 4 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "time": 59.4
+      },
+      {
+       "id": 21,
+       "name": "Park Zone detected late",
+       "means": "PARK box 10 cm further from C4 than LAST_LEG_M says",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (no line at turn); left the route by 485 mm; 3 turn(s) away from any planned turn point / run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "time": 49.2
+      },
+      {
+       "id": 22,
+       "name": "Robot overshoots the Park Zone",
+       "means": "long coast after stop() (slippery mat): the robot rolls on",
+       "verdict": "FAIL",
+       "pass": 0,
+       "safe": 0,
+       "fail": 3,
+       "runs": 3,
+       "why": "run ended FAULT (missed branch); left the route by 278 mm; 1 turn(s) away from any planned turn point / run ended FAULT (missed branch); left the route by 279 mm; 1 turn(s) away from any planned turn point",
+       "time": 12.8
+      }
+     ],
+     "mc": {
+      "runs": 60,
+      "passed": 5,
+      "success_rate": 0.083,
+      "safe_fail": 20,
+      "fail": 35,
+      "time_mean_s": 105.02,
+      "time_min_s": 74.8,
+      "time_max_s": 134.41,
+      "lateral_err_mean_mm": 8.62,
+      "lateral_err_max_mm": 12.0,
+      "heading_err_mean_deg": 2.5,
+      "heading_err_max_deg": 4.17,
+      "recoveries_total": 41,
+      "faults_total": 42,
+      "max_line_error": 3500,
+      "missed_turns_total": 0,
+      "incorrect_turns_total": 68,
+      "failure_reasons": {
+       "run ended FAULT (no line)": 16,
+       "run ended FAULT (missed branch)": 21,
+       "run ended FAULT (no line at turn)": 5,
+       "run ended LEFT FIELD": 13
+      }
+     },
+     "mc_png": "mc_paths_cmp_P1D1Run.png",
+     "mc_failures": [
+      {
+       "seed": 1000,
+       "reason": "run ended FAULT (no line); left the route by 436 mm; 4 turn(s) away from any planned turn point",
+       "events_tail": [
+        "60.78 STATE VERIFY -> LOCATE [D1 back exp 26] why=off window @(1.976,2.003,358.4deg)",
+        "61.30 STATE LOCATE -> ADJUST [D1 back exp 26] why=edge not found @(1.825,2.009,357.6deg)",
+        "61.61 STATE ADJUST -> STOP [D1 back exp 26] why=edge not found @(1.705,2.014,357.0deg)",
+        "62.26 STATE STOP -> TAPE TURN [D1 back exp 26] why=edge not found @(1.670,2.016,356.8deg)",
+        "63.79 STATE TAPE TURN -> FAULT [D1 back exp 26] why=no line @(1.678,2.028,477.7deg)",
+        "65.79 END FAULT"
+       ]
+      },
+      {
+       "seed": 1001,
+       "reason": "run ended FAULT (missed branch)",
+       "events_tail": [
+        "11.55 STATE CENTRE CHK -> CENTRE [to P1 exp 42] why=no line after squaring @(2.047,0.029,115.6deg)",
+        "11.72 STATE CENTRE -> STOP [to P1 exp 42] why=no line after squaring @(2.046,0.031,124.1deg)",
+        "12.52 STATE STOP -> CENTRE CHK [to P1 exp 42] why=no line after squaring @(2.044,0.033,131.9deg)",
+        "12.53 STATE CENTRE CHK -> FOLLOW [to P1 exp 42] why=no line after squaring @(2.044,0.033,131.9deg)",
+        "18.66 STATE FOLLOW -> FAULT [to P1 exp 42] why=missed branch @(1.971,2.085,116.4deg)",
+        "20.67 END FAULT"
+       ]
+      },
+      {
+       "seed": 1002,
+       "reason": "run ended FAULT (no line at turn); 1 turn(s) away from any planned turn point",
+       "events_tail": [
+        "24.68 STATE STOP -> GYRO TURN [P1 back exp 26] why=no main line @(2.002,0.490,271.2deg)",
+        "25.65 STATE GYRO TURN -> STOP [P1 back exp 26] why=no main line @(2.011,0.501,187.8deg)",
+        "26.25 STATE STOP -> CHECK [P1 back exp 26] why=no main line @(2.012,0.501,182.9deg)",
+        "26.26 STATE CHECK -> SWEEP [P1 back exp 26] why=no line after turn @(2.012,0.501,182.9deg)",
+        "27.43 STATE SWEEP -> FAULT [P1 back exp 26] why=no line at turn @(2.007,0.500,207.4deg)",
+        "29.43 END FAULT"
+       ]
+      },
+      {
+       "seed": 1003,
+       "reason": "run ended FAULT (no line); left the route by 427 mm; 4 turn(s) away from any planned turn point",
+       "events_tail": [
+        "52.57 STATE VERIFY -> LOCATE [D1 back exp 26] why=off window @(1.963,2.005,356.9deg)",
+        "53.11 STATE LOCATE -> ADJUST [D1 back exp 26] why=edge not found @(1.815,2.013,357.0deg)",
+        "53.40 STATE ADJUST -> STOP [D1 back exp 26] why=edge not found @(1.709,2.019,357.1deg)",
+        "54.20 STATE STOP -> TAPE TURN [D1 back exp 26] why=edge not found @(1.686,2.020,357.1deg)",
+        "55.65 STATE TAPE TURN -> FAULT [D1 back exp 26] why=no line @(1.691,2.028,478.3deg)",
+        "57.65 END FAULT"
+       ]
+      },
+      {
+       "seed": 1004,
+       "reason": "run ended FAULT (no line); left the route by 442 mm; 4 turn(s) away from any planned turn point",
+       "events_tail": [
+        "67.60 STATE VERIFY -> LOCATE [D1 back exp 26] why=off window @(1.983,1.998,356.6deg)",
+        "68.15 STATE LOCATE -> ADJUST [D1 back exp 26] why=edge not found @(1.834,2.006,357.1deg)",
+        "68.48 STATE ADJUST -> STOP [D1 back exp 26] why=edge not found @(1.710,2.012,357.4deg)",
+        "69.28 STATE STOP -> TAPE TURN [D1 back exp 26] why=edge not found @(1.665,2.014,357.5deg)",
+        "70.88 STATE TAPE TURN -> FAULT [D1 back exp 26] why=no line @(1.670,2.021,478.8deg)",
+        "72.88 END FAULT"
+       ]
+      },
+      {
+       "seed": 1005,
+       "reason": "run ended FAULT (no line); left the route by 441 mm; 4 turn(s) away from any planned turn point",
+       "events_tail": [
+        "69.20 STATE VERIFY -> LOCATE [D1 back exp 26] why=off window @(1.980,2.002,354.3deg)",
+        "69.72 STATE LOCATE -> ADJUST [D1 back exp 26] why=edge not found @(1.836,2.017,353.2deg)",
+        "70.03 STATE ADJUST -> STOP [D1 back exp 26] why=edge not found @(1.717,2.032,352.3deg)",
+        "70.83 STATE STOP -> TAPE TURN [D1 back exp 26] why=edge not found @(1.675,2.038,351.9deg)",
+        "72.23 STATE TAPE TURN -> FAULT [D1 back exp 26] why=no line @(1.685,2.052,472.9deg)",
+        "74.23 END FAULT"
+       ]
+      },
+      {
+       "seed": 1007,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 488 mm",
+       "events_tail": [
+        "1.00 START P1-D1 Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.435,0.008,0.5deg)",
+        "1.01 TURN log=- @(1.435,0.008,0.5deg)",
+        "1.01 STEP C1 exp 28 @(1.435,0.008,0.5deg)",
+        "3.35 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1008,
+       "reason": "run ended LEFT FIELD; motors still driven at the end; left the route by 746 mm",
+       "events_tail": [
+        "1.00 START P1-D1 Run",
+        "1.01 STATE  -> FOLLOW [C1 exp 28] why=- @(1.436,-0.008,-1.1deg)",
+        "1.01 TURN log=- @(1.436,-0.008,-1.1deg)",
+        "1.01 STEP C1 exp 28 @(1.436,-0.008,-1.1deg)",
+        "3.46 END LEFT FIELD"
+       ]
+      },
+      {
+       "seed": 1009,
+       "reason": "run ended FAULT (no line at turn)",
+       "events_tail": [
+        "33.68 STATE STOP -> GYRO TURN [D1 end exp 42] why=line lost @(1.589,1.070,238.2deg)",
+        "35.46 STATE GYRO TURN -> STOP [D1 end exp 42] why=line lost @(1.597,1.065,411.6deg)",
+        "36.13 STATE STOP -> CHECK [D1 end exp 42] why=line lost @(1.597,1.065,418.2deg)",
+        "36.14 STATE CHECK -> SWEEP [D1 end exp 42] why=no line after turn @(1.597,1.065,418.2deg)",
+        "37.30 STATE SWEEP -> FAULT [D1 end exp 42] why=no line at turn @(1.595,1.064,391.7deg)",
+        "39.30 END FAULT"
+       ]
+      },
+      {
+       "seed": 1010,
+       "reason": "run ended FAULT (missed branch)",
+       "events_tail": [
+        "11.62 STATE CENTRE CHK -> CENTRE [to P1 exp 42] why=no line after squaring @(2.041,0.008,110.9deg)",
+        "11.80 STATE CENTRE -> STOP [to P1 exp 42] why=no line after squaring @(2.040,0.009,120.2deg)",
+        "12.60 STATE STOP -> CENTRE CHK [to P1 exp 42] why=no line after squaring @(2.039,0.010,129.6deg)",
+        "12.61 STATE CENTRE CHK -> FOLLOW [to P1 exp 42] why=no line after squaring @(2.039,0.010,129.6deg)",
+        "18.91 STATE FOLLOW -> FAULT [to P1 exp 42] why=missed branch @(1.978,2.076,114.3deg)",
+        "20.92 END FAULT"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ "transitions": [
+  [
+   [
+    "LEAVE",
+    "FAULT",
+    "direct",
+    0
+   ],
+   [
+    "LEAVE",
+    "FOLLOW",
+    "direct",
+    248
+   ],
+   [
+    "LEAVE",
+    "STOP",
+    "via startTapeTurn()",
+    4
+   ],
+   [
+    "LEAVE",
+    "TAPE_TURN",
+    "via startTapeTurn()",
+    4
+   ],
+   [
+    "FOLLOW",
+    "FAULT",
+    "via lineEnded()",
+    17
+   ],
+   [
+    "FOLLOW",
+    "PARK_IN",
+    "direct",
+    217
+   ],
+   [
+    "FOLLOW",
+    "STOP",
+    "via eventSeen()",
+    1616
+   ],
+   [
+    "FOLLOW",
+    "TAPE_TURN",
+    "via lineEnded()",
+    10
+   ],
+   [
+    "FOLLOW",
+    "VERIFY",
+    "via eventSeen()",
+    1606
+   ],
+   [
+    "STOP",
+    "(stored target)",
+    "enter(next) - the state passed to stopThen()",
+    8768
+   ],
+   [
+    "VERIFY",
+    "BACKUP",
+    "direct",
+    227
+   ],
+   [
+    "VERIFY",
+    "FOLLOW",
+    "via notConfirmed()",
+    31
+   ],
+   [
+    "VERIFY",
+    "LOCATE",
+    "via startLocate()",
+    1126
+   ],
+   [
+    "VERIFY",
+    "ROLL",
+    "via verified()",
+    222
+   ],
+   [
+    "VERIFY",
+    "STOP",
+    "via verified()",
+    0
+   ],
+   [
+    "BACKUP",
+    "FOLLOW",
+    "via notConfirmed()",
+    3
+   ],
+   [
+    "BACKUP",
+    "LOCATE",
+    "via startLocate()",
+    224
+   ],
+   [
+    "LOCATE",
+    "POSTLOC",
+    "via locateDone()",
+    1342
+   ],
+   [
+    "LOCATE",
+    "ROLL",
+    "via verified()",
+    8
+   ],
+   [
+    "LOCATE",
+    "STOP",
+    "via locateDone()",
+    1342
+   ],
+   [
+    "POSTLOC",
+    "ROLL",
+    "via verified()",
+    1342
+   ],
+   [
+    "POSTLOC",
+    "STOP",
+    "via verified()",
+    0
+   ],
+   [
+    "GRID_CHECK",
+    "CENTRE_CHECK",
+    "direct",
+    37
+   ],
+   [
+    "GRID_CHECK",
+    "FOLLOW",
+    "direct",
+    1486
+   ],
+   [
+    "GRID_CHECK",
+    "GRID_ALIGN",
+    "direct",
+    1059
+   ],
+   [
+    "GRID_ALIGN",
+    "CENTRE_CHECK",
+    "after STOP",
+    0
+   ],
+   [
+    "GRID_ALIGN",
+    "GRID_CHECK",
+    "after STOP",
+    1059
+   ],
+   [
+    "GRID_ALIGN",
+    "STOP",
+    "direct",
+    1059
+   ],
+   [
+    "ROLL",
+    "GYRO_TURN",
+    "after STOP",
+    1496
+   ],
+   [
+    "ROLL",
+    "STOP",
+    "direct",
+    1572
+   ],
+   [
+    "ROLL",
+    "TAPE_TURN",
+    "after STOP",
+    76
+   ],
+   [
+    "GYRO_TURN",
+    "CHECK",
+    "after STOP",
+    1496
+   ],
+   [
+    "GYRO_TURN",
+    "STOP",
+    "direct",
+    1496
+   ],
+   [
+    "GYRO_TURN",
+    "TAPE_TURN",
+    "via startTapeTurn()",
+    0
+   ],
+   [
+    "CHECK",
+    "CENTRE_CHECK",
+    "via stepDone()",
+    0
+   ],
+   [
+    "CHECK",
+    "CORRECT",
+    "direct",
+    0
+   ],
+   [
+    "CHECK",
+    "GRID_CHECK",
+    "via stepDone()",
+    1462
+   ],
+   [
+    "CHECK",
+    "STOP",
+    "via stepDone()",
+    1462
+   ],
+   [
+    "CHECK",
+    "SWEEP",
+    "direct",
+    34
+   ],
+   [
+    "CORRECT",
+    "CHECK",
+    "after STOP",
+    0
+   ],
+   [
+    "CORRECT",
+    "STOP",
+    "direct",
+    0
+   ],
+   [
+    "SWEEP",
+    "CENTRE_CHECK",
+    "via stepDone()",
+    0
+   ],
+   [
+    "SWEEP",
+    "FAULT",
+    "direct",
+    2
+   ],
+   [
+    "SWEEP",
+    "GRID_CHECK",
+    "via stepDone()",
+    32
+   ],
+   [
+    "SWEEP",
+    "STOP",
+    "via stepDone()",
+    32
+   ],
+   [
+    "CENTRE_CHECK",
+    "CENTRE",
+    "direct",
+    99
+   ],
+   [
+    "CENTRE_CHECK",
+    "FOLLOW",
+    "direct",
+    79
+   ],
+   [
+    "CENTRE",
+    "CENTRE_CHECK",
+    "after STOP",
+    99
+   ],
+   [
+    "CENTRE",
+    "FAULT",
+    "direct",
+    0
+   ],
+   [
+    "CENTRE",
+    "STOP",
+    "direct",
+    99
+   ],
+   [
+    "TAPE_TURN",
+    "CENTRE_CHECK",
+    "via stepDone()",
+    42
+   ],
+   [
+    "TAPE_TURN",
+    "FAULT",
+    "direct",
+    16
+   ],
+   [
+    "TAPE_TURN",
+    "FOLLOW",
+    "after STOP",
+    3
+   ],
+   [
+    "TAPE_TURN",
+    "GRID_CHECK",
+    "via stepDone()",
+    29
+   ],
+   [
+    "TAPE_TURN",
+    "STOP",
+    "direct",
+    86
+   ],
+   [
+    "TAPE_TURN",
+    "TAPE_TURN",
+    "via startTapeTurn()",
+    12
+   ],
+   [
+    "PARK_IN",
+    "DONE",
+    "direct",
+    217
+   ]
+  ],
+  []
+ ],
+ "state_display": {
+  "LEAVE": "LEAVE BOX",
+  "FOLLOW": "FOLLOW",
+  "STOP": "STOP",
+  "VERIFY": "VERIFY",
+  "BACKUP": "BACKUP",
+  "LOCATE": "LOCATE",
+  "POSTLOC": "LOCATED",
+  "GRID_ALIGN": "SQUARE",
+  "GRID_CHECK": "SQUARE CHK",
+  "ROLL": "ADJUST",
+  "GYRO_TURN": "GYRO TURN",
+  "CHECK": "CHECK",
+  "CORRECT": "CORRECT",
+  "SWEEP": "SWEEP",
+  "CENTRE": "CENTRE",
+  "CENTRE_CHECK": "CENTRE CHK",
+  "TAPE_TURN": "TAPE TURN",
+  "PARK_IN": "PARK IN",
+  "DONE": "DONE",
+  "FAULT": "FAULT"
+ },
+ "header_checks": [
+  [
+   "struct HexaPIDConfig (HexaPID.h)",
+   true,
+   "8 fields match"
+  ],
+  [
+   "struct HexaLineArrayConfig (HexaLineArray.h)",
+   true,
+   "12 fields match"
+  ],
+  [
+   "struct HexaDCMotorConfig (HexaDCMotor.h)",
+   true,
+   "4 fields match"
+  ],
+  [
+   "struct LineTuning (LineTuning.h)",
+   true,
+   "15 fields match"
+  ],
+  [
+   "enum LineFault (LineActions.h)",
+   true,
+   "10 values in order"
+  ],
+  [
+   "enum LinePattern (HexaLineArray.h)",
+   true,
+   "5 values in order"
+  ],
+  [
+   "enum LineSide (LineActions.h)",
+   true,
+   "3 values in order"
+  ],
+  [
+   "enum OpModeType (OpModeRegistry.h)",
+   true,
+   "2 values in order"
+  ],
+  [
+   "MOTOR_DEADBAND (HexaDCMotor.h)",
+   true,
+   "real 10.0 vs stand-in 10.0"
+  ],
+  [
+   "DIGITAL_D1 (BoardPins.h)",
+   true,
+   "real 35.0 vs stand-in 35.0"
+  ],
+  [
+   "DIGITAL_D2 (BoardPins.h)",
+   true,
+   "real 36.0 vs stand-in 36.0"
+  ],
+  [
+   "DIGITAL_D3 (BoardPins.h)",
+   true,
+   "real 37.0 vs stand-in 37.0"
+  ],
+  [
+   "TankDrive default ramp _maxDelta (TankDrive.h)",
+   true,
+   "real 0.1 vs stand-in 0.1"
+  ],
+  [
+   "tick order: actions then loop() (NRLOpMode.h)",
+   true,
+   "documented in NRLOpMode.h"
+  ]
+ ],
+ "manifest": [
+  [
+   "RobotFirmware/opmodes/AutoPark.cpp",
+   "ok"
+  ],
+  [
+   "sdk/BoardPins.h",
+   "ok"
+  ],
+  [
+   "sdk/HexaDCMotor.h",
+   "ok"
+  ],
+  [
+   "sdk/HexaLineArray.h",
+   "ok"
+  ],
+  [
+   "sdk/HexaPID.h",
+   "ok"
+  ],
+  [
+   "sdk/LineActions.h",
+   "ok"
+  ],
+  [
+   "sdk/LineTuning.h",
+   "ok"
+  ],
+  [
+   "sdk/NRLAction.h",
+   "ok"
+  ],
+  [
+   "sdk/NRLComms.h",
+   "ok"
+  ],
+  [
+   "sdk/NRLOpMode.h",
+   "ok"
+  ],
+  [
+   "sdk/OpModeRegistry.h",
+   "ok"
+  ],
+  [
+   "sdk/TankDrive.h",
+   "ok"
+  ],
+  [
+   "simulation/core/sdk/NRL.h",
+   "ok"
+  ],
+  [
+   "simulation/core/sim_core.cpp",
+   "ok"
+  ]
+ ],
+ "constants": [
+  [
+   "LEFT_ENC_PIN",
+   "DIGITAL_D3",
+   "int"
+  ],
+  [
+   "RIGHT_ENC_PIN",
+   "DIGITAL_D2",
+   "int"
+  ],
+  [
+   "CPM",
+   "1300.0f",
+   "float"
+  ],
+  [
+   "GLITCH_US",
+   "50",
+   "uint32_t"
+  ],
+  [
+   "SIDE_M",
+   "2.00f",
+   "float"
+  ],
+  [
+   "FIRST_LEG_M",
+   "0.28f",
+   "float"
+  ],
+  [
+   "LAST_LEG_M",
+   "0.30f",
+   "float"
+  ],
+  [
+   "PIVOT_FWD_M",
+   "0.08f",
+   "float"
+  ],
+  [
+   "TURN_ROLL_M",
+   "0.08f",
+   "float"
+  ],
+  [
+   "WINDOW_M",
+   "0.20f",
+   "float"
+  ],
+  [
+   "SLOW_M",
+   "0.30f",
+   "float"
+  ],
+  [
+   "PARK_IN_M",
+   "0.25f + PIVOT_FWD_M",
+   "float"
+  ],
+  [
+   "FOLLOW_SPEED",
+   "0.35f",
+   "float"
+  ],
+  [
+   "APPROACH_SPEED",
+   "0.22f",
+   "float"
+  ],
+  [
+   "CREEP_SPEED",
+   "0.18f",
+   "float"
+  ],
+  [
+   "JUNCTION_SPEED",
+   "0.25f",
+   "float"
+  ],
+  [
+   "ROLL_SPEED",
+   "0.22f",
+   "float"
+  ],
+  [
+   "TURN_FAST",
+   "0.20f",
+   "float"
+  ],
+  [
+   "TURN_SLOW",
+   "0.17f",
+   "float"
+  ],
+  [
+   "CORR_SPEED",
+   "0.17f",
+   "float"
+  ],
+  [
+   "MAX_CORRECTIONS",
+   "0",
+   "int"
+  ],
+  [
+   "SPEED_DROP",
+   "0.50f",
+   "float"
+  ],
+  [
+   "RAMP_RATE",
+   "0.10f",
+   "float"
+  ],
+  [
+   "MAX_STEER_STEP",
+   "0.025f",
+   "float"
+  ],
+  [
+   "STEER_SIGN",
+   "1",
+   "int"
+  ],
+  [
+   "TURN_DEG",
+   "90.0f",
+   "float"
+  ],
+  [
+   "STOP_EARLY_DEG",
+   "8.0f",
+   "float"
+  ],
+  [
+   "TURN_TOL_DEG",
+   "4.0f",
+   "float"
+  ],
+  [
+   "SWEEP_DEG",
+   "25.0f",
+   "float"
+  ],
+  [
+   "MAX_SPIN_DEG",
+   "120.0f",
+   "float"
+  ],
+  [
+   "WOBBLE_DEG",
+   "60.0f",
+   "float"
+  ],
+  [
+   "CENTRE_ERR",
+   "250",
+   "int"
+  ],
+  [
+   "LATERAL_MAX",
+   "1800",
+   "int"
+  ],
+  [
+   "LATERAL_OK",
+   "800",
+   "int"
+  ],
+  [
+   "FLICKER_M",
+   "0.04f",
+   "float"
+  ],
+  [
+   "CENTRE_PASSES",
+   "3",
+   "int"
+  ],
+  [
+   "LEG_START_M",
+   "0.15f",
+   "float"
+  ],
+  [
+   "NEAR_CORNER_M",
+   "0.40f",
+   "float"
+  ],
+  [
+   "SLOW_DEG",
+   "45.0f",
+   "float"
+  ],
+  [
+   "TAPE_ACCEPT_ERR",
+   "1200",
+   "int"
+  ],
+  [
+   "CORNER_DIR",
+   "-1",
+   "int"
+  ],
+  [
+   "LOST_TICKS",
+   "3",
+   "int"
+  ],
+  [
+   "TAPE_PARK_MS",
+   "400",
+   "long"
+  ],
+  [
+   "TERM_M",
+   "0.50f",
+   "float"
+  ],
+  [
+   "GAP_M",
+   "0.50f",
+   "float"
+  ],
+  [
+   "BRANCH_ROLL_M",
+   "PIVOT_FWD_M + 0.05f",
+   "float"
+  ],
+  [
+   "MIN_EVENT_M",
+   "0.05f",
+   "float"
+  ],
+  [
+   "WIDE_COUNT",
+   "5",
+   "int"
+  ],
+  [
+   "CONFIRM_TICKS",
+   "3",
+   "int"
+  ],
+  [
+   "BACKUP_MAX_M",
+   "0.08f",
+   "float"
+  ],
+  [
+   "UTURN_BACK_M",
+   "0.08f",
+   "float"
+  ],
+  [
+   "BAR_MIN_DARK",
+   "6",
+   "int"
+  ],
+  [
+   "LINE_HALF_M",
+   "0.0125f",
+   "float"
+  ],
+  [
+   "LOCATE_SPEED",
+   "0.16f",
+   "float"
+  ],
+  [
+   "LOCATE_MAX_M",
+   "0.15f",
+   "float"
+  ],
+  [
+   "CORNER_TRIM_M",
+   "0.0f",
+   "float"
+  ],
+  [
+   "BRANCH_TRIM_M",
+   "0.0f",
+   "float"
+  ],
+  [
+   "RIGHT_TURN_TRIM_M",
+   "-0.015f",
+   "float"
+  ],
+  [
+   "SENSOR_PITCH_M",
+   "0.010f",
+   "float"
+  ],
+  [
+   "LEARN_GAIN",
+   "0.5f",
+   "float"
+  ],
+  [
+   "LEARN_MAX_M",
+   "0.04f",
+   "float"
+  ],
+  [
+   "CROSS_ZONE_M",
+   "0.10f",
+   "float"
+  ],
+  [
+   "HOLD_KP",
+   "0.010f",
+   "float"
+  ],
+  [
+   "HOLD_MAX",
+   "0.12f",
+   "float"
+  ],
+  [
+   "TERMINAL_SPEED",
+   "0.20f",
+   "float"
+  ],
+  [
+   "BAR_CREEP_SPEED",
+   "0.14f",
+   "float"
+  ],
+  [
+   "BAR_CREEP_M",
+   "0.15f",
+   "float"
+  ],
+  [
+   "OFF_COURSE_DEG",
+   "30.0f",
+   "float"
+  ],
+  [
+   "SOFT_TURN",
+   "0.12f",
+   "float"
+  ],
+  [
+   "GRID_TOL_DEG",
+   "2.0f",
+   "float"
+  ],
+  [
+   "GRID_PASSES",
+   "4",
+   "int"
+  ],
+  [
+   "USE_SDK_LEAVEBOX",
+   "false",
+   "bool"
+  ],
+  [
+   "LEAVE_SPEED",
+   "0.22f",
+   "float"
+  ],
+  [
+   "LEAVE_EXTRA_M",
+   "0.06f",
+   "float"
+  ],
+  [
+   "LATERAL_MAX_DEG",
+   "10.0f",
+   "float"
+  ],
+  [
+   "COAST_GUESS_M",
+   "0.02f",
+   "float"
+  ],
+  [
+   "NUDGE_MS_PER_DEG",
+   "8.0f",
+   "float"
+  ],
+  [
+   "BRANCH_MAX_ANGLE",
+   "12.0f",
+   "float"
+  ],
+  [
+   "HexaPID steer",
+   "{.kP = 0.22f, .kD = 0.08f, .outMin = -0.25f, .outMax = 0.25f, .dAlpha = 0.5f}",
+   "HexaPIDConfig"
+  ],
+  [
+   "LineTuning.pid",
+   "HexaPIDConfig{ .kP = 0.25f, .kD = 0.06f, .dAlpha = 0.5f }",
+   "LineTuning"
+  ],
+  [
+   "LineTuning.rampRate",
+   "0.12f",
+   "LineTuning"
+  ],
+  [
+   "HexaDCMotor leftMotor",
+   "{.dirPin = MOTOR_L_DIR, .pwmPin = MOTOR_L_PWM, .minDrive = 34}",
+   "HexaDCMotorConfig"
+  ],
+  [
+   "HexaDCMotor rightMotor",
+   "{.dirPin = MOTOR_R_DIR, .pwmPin = MOTOR_R_PWM, .flipped = true, .minDrive = 32}",
+   "HexaDCMotorConfig"
+  ]
+ ],
+ "plans": {
+  "PARK_PLAN": [
+   {
+    "name": "C1",
+    "event": "CORNER",
+    "expM": "FIRST_LEG_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C2",
+    "event": "CORNER",
+    "expM": "SIDE_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C3",
+    "event": "CORNER",
+    "expM": "SIDE_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C4",
+    "event": "CORNER",
+    "expM": "SIDE_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "BOX",
+    "event": "BOX",
+    "expM": "LAST_LEG_M - PIVOT_FWD_M",
+    "turnDir": 0,
+    "turnDeg": 0.0
+   }
+  ],
+  "P1D1_PLAN": [
+   {
+    "name": "C1",
+    "event": "CORNER",
+    "expM": "FIRST_LEG_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "to P1",
+    "event": "BRANCH_R",
+    "expM": "GAP_M - PIVOT_FWD_M",
+    "turnDir": 1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "P1 end",
+    "event": "END_BAR",
+    "expM": "TERM_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 180.0
+   },
+   {
+    "name": "P1 back",
+    "event": "MAIN_LINE",
+    "expM": "TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M",
+    "turnDir": 1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "to D1",
+    "event": "BRANCH_L",
+    "expM": "GAP_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "D1 end",
+    "event": "END_BAR",
+    "expM": "TERM_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 180.0
+   },
+   {
+    "name": "D1 back",
+    "event": "MAIN_LINE",
+    "expM": "TERM_M - 2.0f * PIVOT_FWD_M - UTURN_BACK_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C2",
+    "event": "CORNER",
+    "expM": "2.0f * GAP_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C3",
+    "event": "CORNER",
+    "expM": "SIDE_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "C4",
+    "event": "CORNER",
+    "expM": "SIDE_M - PIVOT_FWD_M",
+    "turnDir": -1,
+    "turnDeg": 90.0
+   },
+   {
+    "name": "BOX",
+    "event": "BOX",
+    "expM": "LAST_LEG_M - PIVOT_FWD_M",
+    "turnDir": 0,
+    "turnDeg": 0.0
+   }
+  ]
+ }
+}

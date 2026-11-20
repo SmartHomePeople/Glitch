@@ -1,0 +1,180 @@
+{
+  "_doc": "Virtual sensors. Line-array processing itself follows HexaLineArray.h exactly; these are the physical/analog inputs to it.",
+  "params": {
+    "sensor_fwd_m": {
+      "value": 0.08,
+      "source": "measured",
+      "note": "sensor bar ahead of the middle of the chassis (8 cm, 2026-11-19) = PIVOT_FWD_M in AutoPark"
+    },
+    "sensor_pitch_m": {
+      "value": 0.01,
+      "source": "ASSUMPTION",
+      "note": "spacing between IR channels - NOT measured (AutoPark SENSOR_PITCH_M is the same placeholder)"
+    },
+    "sensor_spot_radius_m": {
+      "value": 0.003,
+      "source": "ASSUMPTION",
+      "note": "radius of the patch each IR channel sees"
+    },
+    "sensor_lateral_offset_m": {
+      "value": 0.0,
+      "source": "ASSUMPTION",
+      "note": "bar centre offset to the robot's left (+)"
+    },
+    "sensor_angle_deg": {
+      "value": 0.0,
+      "source": "ASSUMPTION",
+      "note": "bar rotated on the chassis"
+    },
+    "sensor_dead_mask": {
+      "value": 128,
+      "source": "measured",
+      "note": "bit i = channel i dead. 128 = channel 7 dead (2026-11-19)"
+    },
+    "raw_white": {
+      "value": 400,
+      "source": "ASSUMPTION",
+      "note": "raw ADC over white (12-bit); white reads LOW (HexaLineArray.h)"
+    },
+    "raw_black": {
+      "value": 3000,
+      "source": "ASSUMPTION",
+      "note": "raw ADC over black tape"
+    },
+    "raw_noise": {
+      "value": 40,
+      "source": "ASSUMPTION",
+      "note": "1-sigma raw ADC noise per read"
+    },
+    "cal_noise": {
+      "value": 10,
+      "source": "ASSUMPTION",
+      "note": "1-sigma error of the LINE TEST calibration references"
+    },
+    "uncalibrated": {
+      "value": 0,
+      "source": "fault",
+      "note": "1 = array never calibrated"
+    },
+    "line_dropout_per_s": {
+      "value": 0,
+      "source": "fault",
+      "note": "rate of short blind spells (all channels white)"
+    },
+    "line_dropout_ms": {
+      "value": 60,
+      "source": "fault",
+      "note": "length of each blind spell"
+    },
+    "enc_pin_l": {
+      "value": 37,
+      "source": "firmware",
+      "note": "LEFT_ENC_PIN = DIGITAL_D3 (GPIO37)"
+    },
+    "enc_pin_r": {
+      "value": 36,
+      "source": "firmware",
+      "note": "RIGHT_ENC_PIN = DIGITAL_D2 (GPIO36)"
+    },
+    "enc_cpm_l": {
+      "value": 1250,
+      "source": "derived",
+      "note": "true pulses per metre of left wheel surface. Firmware assumes CPM 1300 for both; the Encoder Accuracy run read L 0.99 m vs R 1.03 m over the same drive"
+    },
+    "enc_cpm_r": {
+      "value": 1350,
+      "source": "derived",
+      "note": "see enc_cpm_l"
+    },
+    "enc_miss_l": {
+      "value": 0,
+      "source": "fault",
+      "note": "probability each left pulse is lost"
+    },
+    "enc_miss_r": {
+      "value": 0,
+      "source": "fault",
+      "note": "probability each right pulse is lost"
+    },
+    "enc_spurious_hz_l": {
+      "value": 0,
+      "source": "fault",
+      "note": "extra noise pulses per second"
+    },
+    "enc_spurious_hz_r": {
+      "value": 0,
+      "source": "fault",
+      "note": "extra noise pulses per second"
+    },
+    "enc_dead_l": {
+      "value": 0,
+      "source": "fault",
+      "note": "1 = left encoder disconnected"
+    },
+    "enc_dead_r": {
+      "value": 0,
+      "source": "fault",
+      "note": "1 = right encoder disconnected"
+    },
+    "enc_dead_l_t": {
+      "value": -1,
+      "source": "fault",
+      "note": "left encoder stops from this time (s)"
+    },
+    "enc_dead_r_t": {
+      "value": -1,
+      "source": "fault",
+      "note": "right encoder stops from this time (s)"
+    },
+    "gyro_noise_deg": {
+      "value": 0.05,
+      "source": "ASSUMPTION",
+      "note": "1-sigma heading noise"
+    },
+    "gyro_bias_deg": {
+      "value": 0.0,
+      "source": "ASSUMPTION",
+      "note": "constant offset (cancels on zeroHeading)"
+    },
+    "gyro_drift_dps": {
+      "value": 0.02,
+      "source": "ASSUMPTION",
+      "note": "heading drift, deg per second"
+    },
+    "gyro_scale": {
+      "value": 1.0,
+      "source": "ASSUMPTION",
+      "note": "turn-rate scale error"
+    },
+    "gyro_ready_ms": {
+      "value": 0,
+      "source": "ASSUMPTION",
+      "note": "isHeadingReady() false until this time"
+    },
+    "gyro_unavailable": {
+      "value": 0,
+      "source": "fault",
+      "note": "1 = isHeadingReady() always false"
+    },
+    "gyro_sign_flip": {
+      "value": 0,
+      "source": "fault",
+      "note": "1 = heading sign reversed"
+    },
+    "gyro_jump_t": {
+      "value": -1,
+      "source": "fault",
+      "note": "sudden heading jump at this time (s)"
+    },
+    "gyro_jump_deg": {
+      "value": 0,
+      "source": "fault",
+      "note": "size of the jump"
+    },
+    "sdk_leavebox_gyro_hold": {
+      "value": 0,
+      "source": "ASSUMPTION",
+      "note": "Does the SDK's leaveBox() hold heading with the gyro? LineActions.h only says 'straight out'. 0 = open loop (default), 1 = gyro hold. Only the repo V3 Park Run uses leaveBox(); the candidate uses its own LEAVE state"
+    }
+  }
+}

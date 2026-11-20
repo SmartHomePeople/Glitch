@@ -1,0 +1,32 @@
+{
+  "_doc": "The 22 required test scenarios. 'base' = ideal (perfect hardware) or nominal (Pixel as measured: ch7 dead, right side 5% faster, encoder L/R mismatch, noise). 'set' overrides parameters (number = set, {mul}/{add} = scale/offset). Each scenario runs on several seeds. Verdicts: PASS = parked with all 4 wheels inside PARK and route/turn checks clean; SAFE FAIL = firmware stopped itself with FAULT, on the route, motors off; FAIL = anything else.",
+  "bases": {
+    "ideal": {"sensor_dead_mask": 0, "raw_noise": 0, "cal_noise": 0, "gyro_noise_deg": 0, "gyro_drift_dps": 0,
+              "motor_gain_r": 1.0, "enc_cpm_l": 1300, "enc_cpm_r": 1300, "thr_straight_r": 24.5, "thr_pivot_r": 29.0},
+    "nominal": {}
+  },
+  "scenarios": [
+    {"id": 1,  "name": "Ideal conditions", "base": "ideal", "set": {}, "means": "all 8 channels work, no noise, symmetric motors and encoders"},
+    {"id": 2,  "name": "Sensor channel 7 dead", "base": "ideal", "set": {"sensor_dead_mask": 128}, "means": "ideal, except channel 7 reads white always (as on Pixel)"},
+    {"id": 3,  "name": "Sensor noise", "base": "nominal", "set": {"raw_noise": 200, "cal_noise": 60}, "means": "5x the nominal ADC noise"},
+    {"id": 4,  "name": "Encoder left disconnected", "base": "nominal", "set": {"enc_dead_l": 1}, "means": "left encoder never pulses"},
+    {"id": 5,  "name": "Encoder right disconnected", "base": "nominal", "set": {"enc_dead_r": 1}, "means": "right encoder never pulses"},
+    {"id": 6,  "name": "Both encoders disconnected", "base": "nominal", "set": {"enc_dead_l": 1, "enc_dead_r": 1}, "means": "no distance at all"},
+    {"id": 7,  "name": "Gyro unavailable", "base": "nominal", "set": {"gyro_unavailable": 1}, "means": "isHeadingReady() never true"},
+    {"id": 8,  "name": "Gyro drift", "base": "nominal", "set": {"gyro_drift_dps": 0.5}, "means": "0.5 deg/s drift (25x nominal)"},
+    {"id": 9,  "name": "Left motor weaker", "base": "nominal", "set": {"motor_gain_l": 0.85}, "means": "left side 15% weaker"},
+    {"id": 10, "name": "Right motor weaker", "base": "nominal", "set": {"motor_gain_r": 0.90}, "means": "right side 10% weaker than left (instead of 5% stronger)"},
+    {"id": 11, "name": "Low motor speed", "base": "nominal", "set": {"motor_gain_l": {"mul": 0.75}, "motor_gain_r": {"mul": 0.75}}, "means": "both sides 25% slower (low battery); start thresholds unchanged"},
+    {"id": 12, "name": "High motor speed", "base": "nominal", "set": {"motor_gain_l": {"mul": 1.25}, "motor_gain_r": {"mul": 1.25}}, "means": "both sides 25% faster (fresh battery / lighter robot)"},
+    {"id": 13, "name": "Excessive motor ramp", "base": "nominal", "set": {"tau_up_s": 0.25, "tau_down_s": 0.25, "tau_coast_s": 0.25}, "means": "motors+chassis respond 3x slower. The firmware's own RAMP_RATE is NOT changed (that would be editing the controller)"},
+    {"id": 14, "name": "Incorrect start position", "base": "nominal", "set": {"start_x_m": {"add": -0.12}, "start_y_m": {"add": 0.03}}, "means": "placed 12 cm back and 3 cm left of the START centre"},
+    {"id": 15, "name": "Incorrect start heading", "base": "nominal", "set": {"start_heading_deg": 6}, "means": "placed turned 6 deg left"},
+    {"id": 16, "name": "Slight lateral sensor offset", "base": "nominal", "set": {"sensor_lateral_offset_m": 0.006}, "means": "sensor bar mounted 6 mm left of the chassis centre line"},
+    {"id": 17, "name": "Starts too close to the edge of Start", "base": "nominal", "set": {"start_x_m": 1.60}, "means": "chassis 15 cm forward: sensor bar 2 cm from the box's front edge"},
+    {"id": 18, "name": "Intermittent line loss", "base": "nominal", "set": {"line_dropout_per_s": 1.0, "line_dropout_ms": 50}, "means": "about once a second all channels read white for 50 ms"},
+    {"id": 19, "name": "Corner detected earlier than expected", "base": "nominal", "set": {"enc_cpm_l": {"mul": 0.92}, "enc_cpm_r": {"mul": 0.92}}, "means": "encoders under-count 8%: corners arrive ~15 cm before the firmware's prediction"},
+    {"id": 20, "name": "Corner detected later than expected", "base": "nominal", "set": {"enc_cpm_l": {"mul": 1.08}, "enc_cpm_r": {"mul": 1.08}}, "means": "encoders over-count 8%: corners arrive ~15 cm after the prediction"},
+    {"id": 21, "name": "Park Zone detected late", "base": "nominal", "set": {}, "park_shift_mm": 100, "means": "PARK box 10 cm further from C4 than LAST_LEG_M says"},
+    {"id": 22, "name": "Robot overshoots the Park Zone", "base": "nominal", "set": {"tau_coast_s": 0.35, "tau_down_s": 0.20, "slip_long": 1.0}, "means": "long coast after stop() (slippery mat): the robot rolls on"}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "_doc": "EXPERIMENTAL tuning only. The baseline always uses the gains compiled from AutoPark.cpp. These values are applied by the SIMULATOR to the firmware's steer HexaPID instance (pid0) at start, never written into the firmware. Only results that hold across many Monte Carlo seeds should ever be copied to the robot - by hand, after a real test.",
+  "steer_pid_grid": {"kp": [0.10, 0.16, 0.22, 0.30, 0.40], "kd": [0.00, 0.04, 0.08, 0.12, 0.16]},
+  "seeds_per_cell": 8,
+  "opmode": "Park Run"
+}

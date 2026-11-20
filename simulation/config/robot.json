@@ -1,0 +1,31 @@
+{
+  "_doc": "Robot body, motors and physics. Every value has a source: measured (on Pixel), derived (computed from measurements), header (copied from an SDK header), firmware (copied from AutoPark.cpp) or ASSUMPTION (not measured - update after measuring). Edit 'value' only.",
+  "params": {
+    "wheel_radius_m":   {"value": 0.050, "source": "measured", "note": "100 mm wheels"},
+    "track_width_m":    {"value": 0.316, "source": "measured", "note": "middle of left wheels to middle of right wheels"},
+    "skid_factor":      {"value": 1.42,  "source": "ASSUMPTION", "note": "4-wheel skid-steer turns slower than ideal diff-drive; effective track = track_width_m x skid_factor (0.45 m). Fitted in the earlier sim to the observed turn behaviour, not measured directly"},
+    "wheelbase_m":      {"value": 0.20,  "source": "ASSUMPTION", "note": "front-to-rear axle spacing; NOT measured. Used only for the 'all wheel contact points inside PARK' check"},
+    "motor_rpm":        {"value": 300,   "source": "measured", "note": "Johnson 300 RPM at 12 V (motor label)"},
+    "motor_gain_l":     {"value": 1.00,  "source": "derived", "note": "relative strength of the left side"},
+    "motor_gain_r":     {"value": 1.05,  "source": "derived", "note": "right ~5% faster: the robot veered left ~6 cm per metre (Encoder Accuracy runs, 2026-11-19)"},
+    "thr_straight_l":   {"value": 24.5,  "source": "measured", "note": "Min Drive: PWM at which the left side starts moving, straight"},
+    "thr_straight_r":   {"value": 22.5,  "source": "measured", "note": "Min Drive, straight"},
+    "thr_pivot_l":      {"value": 29.0,  "source": "measured", "note": "Min Drive, pivot (median)"},
+    "thr_pivot_r":      {"value": 23.0,  "source": "measured", "note": "Min Drive, pivot (median)"},
+    "kinetic_ratio":    {"value": 0.80,  "source": "ASSUMPTION", "note": "once rolling, the threshold drops to this fraction (static vs kinetic friction)"},
+    "tau_up_s":         {"value": 0.08,  "source": "ASSUMPTION", "note": "time constant speeding up (motor + robot inertia)"},
+    "tau_down_s":       {"value": 0.08,  "source": "ASSUMPTION", "note": "time constant slowing down under drive"},
+    "tau_coast_s":      {"value": 0.10,  "source": "ASSUMPTION", "note": "time constant when the motor output is 0 (coast). Sets how far the robot rolls after stop()"},
+    "slip_long":        {"value": 0.97,  "source": "ASSUMPTION", "note": "ground travel / wheel surface travel"},
+    "motor_reversed_l": {"value": 0, "source": "fault", "note": "1 = left motor wired backwards (fault)"},
+    "motor_reversed_r": {"value": 0, "source": "fault", "note": "1 = right motor wired backwards (fault)"},
+    "motor_stall_l_t":  {"value": -1, "source": "fault", "note": "left motor stalls from this time (s); -1 = never"},
+    "motor_stall_r_t":  {"value": -1, "source": "fault", "note": "right motor stalls from this time (s); -1 = never"}
+  },
+  "simulation": {
+    "dt_s":      {"value": 0.01, "source": "header", "note": "the NRL runtime ticks at 100 Hz (LineTuning.h: 'robot ticks (10 ms each at 100 Hz)')"},
+    "timeout_s": {"value": 150,  "source": "rules", "note": "Autonomous Skill Challenge run time"},
+    "stuck_s":   {"value": 8,    "source": "simulator", "note": "no motion for this long while not DONE/FAULT = STUCK"},
+    "seq_chain": {"value": 0,    "source": "ASSUMPTION", "note": "0: sequential() advances one child per tick. 1: chains finished children in the same tick"}
+  }
+}

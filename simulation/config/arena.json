@@ -1,0 +1,30 @@
+{
+  "_doc": "Arena tape (mm). Our frame: corner C4 = (0,0), x to the right (east), y up (north). Robot heading 0 = east, CCW positive. Source: NRL 2026 manual + team measurements; ASSUMPTION items are marked.",
+  "tape_width": 25,
+  "loop": {"x0": 0, "y0": 0, "size": 2000, "source": "manual: 2000 x 2000 mm main line"},
+  "corners": {"C1": [2000, 0], "C2": [2000, 2000], "C3": [0, 2000], "C4": [0, 0]},
+  "boxes": {
+    "START": {"rect": [1200, -250, 1700, 250], "source": "500x500 (manual); START edge to C1 = 300 mm (measured). Centred on the bottom line = ASSUMPTION"},
+    "PARK":  {"rect": [300, -250, 800, 250],  "source": "500x500 (manual); C4 to PARK edge = 300 mm (measured). Centred on the bottom line = ASSUMPTION"}
+  },
+  "bottom_line": {"segments": [[1700, 2000], [0, 300]], "source": "line from START to C1 and from C4 to PARK. The piece between PARK and START is not on any route and is omitted (ASSUMPTION)"},
+  "terminals": [
+    {"name": "P1", "kind": "pickup", "attach": [2000, 500],  "dir": [1, 0],  "length": 500},
+    {"name": "P2", "kind": "pickup", "attach": [2000, 1500], "dir": [1, 0],  "length": 500},
+    {"name": "P3", "kind": "pickup", "attach": [1500, 2000], "dir": [0, 1],  "length": 500},
+    {"name": "P4", "kind": "pickup", "attach": [500, 2000],  "dir": [0, 1],  "length": 500},
+    {"name": "P5", "kind": "pickup", "attach": [0, 1500],    "dir": [-1, 0], "length": 500},
+    {"name": "P6", "kind": "pickup", "attach": [0, 500],     "dir": [-1, 0], "length": 500},
+    {"name": "D1", "kind": "drop",   "attach": [2000, 1000], "dir": [-1, 0], "length": 500},
+    {"name": "D2", "kind": "drop",   "attach": [1000, 2000], "dir": [0, -1], "length": 500},
+    {"name": "D3", "kind": "drop",   "attach": [0, 1000],    "dir": [1, 0],  "length": 500}
+  ],
+  "terminal_end_bar": 150,
+  "terminal_source": "manual: terminals 500 mm with 150 mm end bars; pick-ups point outward at 500/1500 mm from the corners on the right, top and left sides; drops point inward at the side midpoints",
+  "field": {"rect": [-829, -829, 2829, 2829], "source": "manual: 3658 x 3658 mm field; loop centred in it = ASSUMPTION"},
+  "start_pose": {"x": 1450, "y": 0, "heading_deg": 0, "source": "chassis middle at the centre of START, facing C1 (ASSUMPTION: the team's placement)"},
+  "routes": {
+    "Park Run": ["START", "C1", "C2", "C3", "C4", "PARK"],
+    "P1-D1 Run": ["START", "C1", "P1", "C1-C2", "D1", "C2", "C3", "C4", "PARK"]
+  }
+}
