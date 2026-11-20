@@ -22,26 +22,21 @@
 //  "First Junction" fallback): leaveBox() / followToBox() handle the black
 //  START and PARK squares, corners turn themselves, and the T-junctions
 //  (P1-P6, D1-D3 all have the line carrying on straight) are passed.
-//  The last stretch into the PARK box uses our own ME-28 encoders.
+//  The last stretch into the PARK box is the SDK's timed park(ms) (no encoders).
 //
 //  Needs LINE TEST calibration on the mat (white first, then black).
 // ============================================================
 #include "NRL.h"
 
-// ── Measured robot values (19-20 Nov, from the handoff) ─────────────────────
-static constexpr float COUNTS_PER_M      = 1300.0f; // ME-28, both sides
-static constexpr uint32_t ENC_GLITCH_US  = 50;      // ignore edges closer than this
-static constexpr int ENC_LEFT_PIN        = DIGITAL_D3; // board "D2" port = GPIO37
-static constexpr int ENC_RIGHT_PIN       = DIGITAL_D2; // board "D1" port = GPIO36
-
-// ── Park: last stretch after followToBox() stops just inside the PARK box ──
-// ESTIMATE, NOT MEASURED. Goal: chassis middle near the box centre (250 mm in),
-// sensor bar 80 mm ahead of chassis middle -> bar ~330 mm in. followToBox()
-// already stops the bar a few cm inside the edge, so drive ~0.25 m more.
-// Tune on the mat: all drive wheels must be on the black square.
-static constexpr float    PARK_DRIVE_M     = 0.25f;
+// ── Park ──────────────────────────────────────────────────────────────────
+// Park: followToBox() brakes with the sensor bar just inside the PARK square;
+// then the SDK's park(ms) drives straight on at tuning.parkSpeed for PARK_MS
+// and stops. NO ENCODERS (20 Nov). Same goal as before: ~0.25 m further, so
+// the chassis middle sits near the box centre. 600 ms at 0.22 is an ESTIMATE
+// (speed at 0.22 not measured). Tune on the mat: all drive wheels must be on
+// the black square -> wheels short of the box: raise; robot past it: lower.
 static constexpr float    PARK_SPEED       = 0.22f;
-static constexpr uint32_t PARK_TIMEOUT_MS  = 2500;  // safety cap if encoders fail
+static constexpr uint16_t PARK_MS          = 600;
 
 // ── Hardware ───────────────────────────────────────────────────────────────
 // Motor direction + floor from the 19 Nov Min Drive test: left NOT flipped,
@@ -76,50 +71,10 @@ static LineTuning parkTuning() {
     t.pivotSpeed    = 0.25f;   // SDK default
     t.turnSpeed     = 0.45f;   // SDK default
     t.turnSlowSpeed = 0.30f;   // SDK default; must stay above the spin floor
+    t.parkSpeed     = PARK_SPEED;   // park(ms) speed, as the old park drive
     return t;
 }
 static LineActions lineActions(drive, line, parkTuning());
-
-// ── Encoders (channel A only, count up in both directions) ─────────────────
-static volatile uint32_t encLeft = 0, encRight = 0;
-static volatile uint32_t encLeftUs = 0, encRightUs = 0;
-
-static void IRAM_ATTR onEncLeft() {
-    uint32_t now = micros();
-    if (now - encLeftUs >= ENC_GLITCH_US) { encLeft++; encLeftUs = now; }
-}
-static void IRAM_ATTR onEncRight() {
-    uint32_t now = micros();
-    if (now - encRightUs >= ENC_GLITCH_US) { encRight++; encRightUs = now; }
-}
-
-// Drive straight for a distance measured by the encoders (average of both
-// sides), then stop. Forward only: the encoders can't tell direction.
-class EncoderDrive : public Action {
-public:
-    EncoderDrive(float metres, float speed, uint32_t timeoutMs)
-        : _metres(metres), _speed(speed), _timeoutMs(timeoutMs) {}
-    bool run() override {
-        if (!_started) {
-            _l0 = encLeft; _r0 = encRight; _t0 = millis();
-            drive.drive(_speed, 0.0f);
-            _started = true;
-            return false;
-        }
-        float counts = 0.5f * (float)((encLeft - _l0) + (encRight - _r0));
-        if (counts / COUNTS_PER_M >= _metres || millis() - _t0 >= _timeoutMs) {
-            drive.stop();
-            return true;
-        }
-        return false;
-    }
-    void reset() override { _started = false; }
-private:
-    float _metres, _speed;
-    uint32_t _timeoutMs;
-    bool _started = false;
-    uint32_t _l0 = 0, _r0 = 0, _t0 = 0;
-};
 
 // What the routine is doing, for telemetry. Set by instant() steps, which the
 // builder skips after a fault, so it shows the last step that actually ran.
@@ -134,10 +89,6 @@ public:
         rightMotor.begin();
         arm.begin();
         line.begin();
-        pinMode(ENC_LEFT_PIN, INPUT_PULLUP);
-        pinMode(ENC_RIGHT_PIN, INPUT_PULLUP);
-        attachInterrupt(digitalPinToInterrupt(ENC_LEFT_PIN), onEncLeft, RISING);
-        attachInterrupt(digitalPinToInterrupt(ENC_RIGHT_PIN), onEncRight, RISING);
         stepName = "ready";
     }
 
@@ -146,7 +97,6 @@ public:
         lineActions.clearFault();
         lineActions.resetCounts();
         lineActions.clearRoute();
-        encLeft = 0; encRight = 0;
         stepName = "start";
         recoveries = 0;
         faultLog = "none";
@@ -188,7 +138,6 @@ public:
         telemetry.addData("turn deg", lineActions.lastTurnDegrees());
         telemetry.addData("grid deg", lineActions.gridHeading());
         telemetry.addData("err", (float)line.error());
-        telemetry.addData("enc m", 0.5f * (float)(encLeft + encRight) / COUNTS_PER_M);
     }
 
 private:
@@ -211,7 +160,7 @@ private:
          .followToBox()                     // corners auto, junctions passed,
                                             // brakes just inside the PARK square
          .then(step("park"))
-         .then(std::make_shared<EncoderDrive>(PARK_DRIVE_M, PARK_SPEED, PARK_TIMEOUT_MS))
+         .then(lineActions.park(PARK_MS))
          .then(step("PARKED"))
          .stop();
         runAction(b.build());
@@ -221,8 +170,6 @@ public:
     void stop() override {
         cancelActions();
         drive.stop();
-        detachInterrupt(digitalPinToInterrupt(ENC_LEFT_PIN));
-        detachInterrupt(digitalPinToInterrupt(ENC_RIGHT_PIN));
     }
 };
 

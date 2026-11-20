@@ -40,16 +40,15 @@
 
 namespace {   // file-local: other OpModes have their own helpers
 
-// ── Measured robot values (handoff, 19-20 Nov) ─────────────────────────────
-constexpr float    COUNTS_PER_M   = 1300.0f;
-constexpr uint32_t ENC_GLITCH_US  = 50;
-constexpr int      ENC_LEFT_PIN   = DIGITAL_D3;  // board "D2" port = GPIO37
-constexpr int      ENC_RIGHT_PIN  = DIGITAL_D2;  // board "D1" port = GPIO36
-
-// ── Park (same as Start to Park, which parked on 20 Nov) ───────────────────
-constexpr float    PARK_DRIVE_M    = 0.25f;
+// ── Park ──────────────────────────────────────────────────────────────────
+// Park: followToBox() brakes with the sensor bar just inside the PARK square;
+// then the SDK's park(ms) drives straight on at tuning.parkSpeed for PARK_MS
+// and stops. NO ENCODERS (20 Nov). Same goal as before: ~0.25 m further, so
+// the chassis middle sits near the box centre. 600 ms at 0.22 is an ESTIMATE
+// (speed at 0.22 not measured). Tune on the mat: all drive wheels must be on
+// the black square -> wheels short of the box: raise; robot past it: lower.
 constexpr float    PARK_SPEED      = 0.22f;
-constexpr uint32_t PARK_TIMEOUT_MS = 2500;
+constexpr uint16_t PARK_MS          = 600;
 
 // ── Placeholders until the mechanism code is in ────────────────────────────
 constexpr uint32_t PICK_PAUSE_MS = 500;
@@ -63,7 +62,7 @@ constexpr float EST_DROP_S     = 14.0f;  // leg B, until measured
 constexpr float EST_PICKDROP_S = 32.0f;  // leg C, until measured
 constexpr float PARK_S_PER_M   = 2.5f;   // main-line following
 constexpr float PARK_S_CORNER  = 3.0f;   // each corner
-constexpr float PARK_FINISH_S  = 3.0f;   // into the box + encoder drive
+constexpr float PARK_FINISH_S  = 3.0f;   // into the box + timed park
 
 // Arena (manual p.6), metres along the loop from corner C1, travelling CCW.
 // Side s runs from 2s to 2s+2: Pa at +0.5, D at +1.0, Pb at +1.5.
@@ -92,6 +91,7 @@ LineTuning missionTuning() {
     t.pivotSpeed    = 0.25f;
     t.turnSpeed     = 0.45f;
     t.turnSlowSpeed = 0.30f;
+    t.parkSpeed     = PARK_SPEED;   // park(ms) speed, as the old park drive
     return t;
 }
 LineActions lineActions(drive, line, missionTuning());
@@ -107,46 +107,6 @@ LineTuning terminalTuning() {
     t.followSpeed = TERMINAL_SPEED;
     return t;
 }
-
-// ── Encoders ───────────────────────────────────────────────────────────────
-volatile uint32_t encLeft = 0, encRight = 0;
-volatile uint32_t encLeftUs = 0, encRightUs = 0;
-
-void IRAM_ATTR onEncLeft() {
-    uint32_t now = micros();
-    if (now - encLeftUs >= ENC_GLITCH_US) { encLeft++; encLeftUs = now; }
-}
-void IRAM_ATTR onEncRight() {
-    uint32_t now = micros();
-    if (now - encRightUs >= ENC_GLITCH_US) { encRight++; encRightUs = now; }
-}
-
-// Straight drive for a distance on the encoders, then stop (forward only).
-class EncDrive : public Action {
-public:
-    EncDrive(float metres, float speed, uint32_t timeoutMs)
-        : _metres(metres), _speed(speed), _timeoutMs(timeoutMs) {}
-    bool run() override {
-        if (!_started) {
-            _l0 = encLeft; _r0 = encRight; _t0 = millis();
-            drive.drive(_speed, 0.0f);
-            _started = true;
-            return false;
-        }
-        float counts = 0.5f * (float)((encLeft - _l0) + (encRight - _r0));
-        if (counts / COUNTS_PER_M >= _metres || millis() - _t0 >= _timeoutMs) {
-            drive.stop();
-            return true;
-        }
-        return false;
-    }
-    void reset() override { _started = false; }
-private:
-    float _metres, _speed;
-    uint32_t _timeoutMs;
-    bool _started = false;
-    uint32_t _l0 = 0, _r0 = 0, _t0 = 0;
-};
 
 // ── CORE being carried (record for telemetry and later decisions) ─────────
 enum Core : uint8_t { NONE, RED, GOLD, BLUE };
@@ -172,8 +132,8 @@ ActionPtr dropCore() {
 // ===========================================================================
 
 // ── The mission as a list of steps, grouped into legs ─────────────────────
-enum class Op : uint8_t { LEAVE_BOX, TO_JUNCTION, LEFT, RIGHT, UTURN, TO_END,
-                          TO_BOX, PICK, DROP, PARK_DRIVE, STOP };
+enum class Op : uint8_t { LEAVE_BOX, TO_JUNCTION, FORGET_ROUTE, LEFT, RIGHT, UTURN,
+                          TO_END, TO_BOX, PICK, DROP, PARK_DRIVE, STOP };
 enum class LegKind : uint8_t { START, PICK, DROP, PICK_DROP, PARK };
 
 struct Leg {
@@ -255,6 +215,7 @@ void buildMission() {
         add(L, Op::DROP);
         add(L, Op::UTURN);
         add(L, Op::TO_JUNCTION);
+        add(L, Op::FORGET_ROUTE);             // see makeAction()
         add(L, Op::LEFT);                     // forward again
     }
 
@@ -268,19 +229,17 @@ void buildMission() {
 ActionPtr makeAction(const Step& s, int count) {
     switch (s.op) {
         case Op::LEAVE_BOX:   return lineActions.leaveBox();
-        case Op::TO_JUNCTION:
-            // Run 2 (20 Nov): NO_BRANCH on the left() at step #28 (back from
-            // D1 the second time), with the robot on the T. The SDK's route
-            // memory ("the way home") was confused by our route, which visits
-            // D1 twice from different directions. We never retrace, so forget
-            // the route before each follow: memory then holds only the junction
-            // this step stops at, and left()/right() are checked against it.
-            // clearRoute() also re-sets grid 0 deg at the next step; every
-            // TO_JUNCTION starts right after a turn/U-turn has squared up.
-            return sequential({
-                instant([] { lineActions.clearRoute(); }),
-                lineActions.followToJunction(s.side, count),
-            });
+        case Op::TO_JUNCTION: return lineActions.followToJunction(s.side, count);
+        case Op::FORGET_ROUTE:
+            // Run 2 (20 Nov): NO_BRANCH on the final left() of leg P2>D1 (#28),
+            // robot on the T. The SDK's route memory ("the way home") was
+            // confused by our route visiting D1 twice from different
+            // directions. A clearRoute() before EVERY follow (tried next) made
+            // step #14 fail instead, twice (runs 5 and 7), where run 2 had
+            // passed it. So the route is forgotten only here, right before
+            // that one turn. It also re-sets grid 0 deg from the current
+            // heading at the turn.
+            return instant([] { lineActions.clearRoute(); });
         case Op::LEFT:        return lineActions.left();
         case Op::RIGHT:       return lineActions.right();
         case Op::UTURN:       return lineActions.uTurn();
@@ -295,7 +254,7 @@ ActionPtr makeAction(const Step& s, int count) {
         case Op::TO_BOX:      return lineActions.followToBox();
         case Op::PICK:        return pickCore(s.core);
         case Op::DROP:        return dropCore();
-        case Op::PARK_DRIVE:  return std::make_shared<EncDrive>(PARK_DRIVE_M, PARK_SPEED, PARK_TIMEOUT_MS);
+        case Op::PARK_DRIVE:  return lineActions.park(PARK_MS);
         case Op::STOP:        return lineActions.stop();
     }
     return lineActions.stop();
@@ -305,6 +264,7 @@ const char* opName(Op op) {
     switch (op) {
         case Op::LEAVE_BOX:   return "leave box";
         case Op::TO_JUNCTION: return "to junction";
+        case Op::FORGET_ROUTE: return "forget route";
         case Op::LEFT:        return "left";
         case Op::RIGHT:       return "right";
         case Op::UTURN:       return "U-turn";
@@ -328,10 +288,6 @@ public:
         rightMotor.begin();
         arm.begin();
         line.begin();
-        pinMode(ENC_LEFT_PIN, INPUT_PULLUP);
-        pinMode(ENC_RIGHT_PIN, INPUT_PULLUP);
-        attachInterrupt(digitalPinToInterrupt(ENC_LEFT_PIN), onEncLeft, RISING);
-        attachInterrupt(digitalPinToInterrupt(ENC_RIGHT_PIN), onEncRight, RISING);
         buildMission();
     }
 
@@ -343,7 +299,6 @@ public:
         // A run stopped inside a terminal never switched back from the slow
         // terminal tuning; without this the next run would follow at 0.22.
         lineActions.setTuning(missionTuning());
-        encLeft = 0; encRight = 0;
         carrying = NONE;
         recoveries = 0;
         faultLog = "none";
@@ -435,8 +390,6 @@ public:
     void stop() override {
         cancelActions();
         drive.stop();
-        detachInterrupt(digitalPinToInterrupt(ENC_LEFT_PIN));
-        detachInterrupt(digitalPinToInterrupt(ENC_RIGHT_PIN));
         mode = Mode::IDLE;
     }
 
