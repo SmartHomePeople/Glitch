@@ -294,6 +294,16 @@ struct NRLGamepadSim {
 };
 extern NRLGamepadSim gamepad1;
 
+// HexaLED (real: lib/HexaLED/src/HexaLED.h, global userLed from RobotConfig.h). No effect in the simulator.
+class HexaLED {
+public:
+    void setSolid(uint8_t, uint8_t, uint8_t) {}
+    void setBlink(uint8_t, uint8_t, uint8_t, uint16_t) {}
+    void setPulse(uint8_t, uint8_t, uint8_t, uint16_t) {}
+    void setOff() {}
+};
+inline HexaLED userLed;
+
 class NRLTelemetry {
 public:
     void addData(const char *key, float value);

@@ -11,7 +11,7 @@ import numpy as np
 
 from .arena import dist_to_polyline
 
-TURN_STATES = ("GYRO TURN", "TAPE TURN")
+TURN_STATES = ("GYRO TURN", "TAPE TURN", "TURN", "TURN BACK")
 OFF_ROUTE_MM = 250.0        # chassis middle further than this from the planned path = off route
 TURN_MATCH_MM = 300.0       # a turn must start within this of a planned turn point
 
@@ -22,7 +22,7 @@ def wrap180(a):
 
 def planned_turn_points(arena, opmode):
     c = arena.corners
-    if opmode == "P1-D1 Run":
+    if "D1" in opmode:
         p1, d1 = arena.terminals["P1"], arena.terminals["D1"]
         return [("C1", c["C1"]), ("to P1", p1["attach"]), ("P1 end", p1["end"]), ("P1 back", p1["attach"]),
                 ("to D1", d1["attach"]), ("D1 end", d1["end"]), ("D1 back", d1["attach"]),
@@ -126,7 +126,7 @@ def evaluate(res, trace, arena, params):
             a_i = i
         longest = max(longest, abs(th_all[i] - th_all[a_i]))
     e["longest_spin_deg"] = round(float(longest), 1)
-    max_single = 180.0 if res["opmode"] == "P1-D1 Run" else 90.0
+    max_single = 180.0 if "D1" in res["opmode"] else 90.0
     e["spin_limit_deg"] = max_single + 120.0       # turn + search window + margin
     e["excess_rotation"] = e["longest_spin_deg"] > e["spin_limit_deg"]
 

@@ -48,7 +48,7 @@ class Arena:
         start = ((self.boxes["START"][0] + self.boxes["START"][2]) / 2, 0)
         park = ((self.boxes["PARK"][0] + self.boxes["PARK"][2]) / 2, 0)
         pts = [start, c["C1"]]
-        if opmode == "P1-D1 Run":
+        if "D1" in opmode:
             p1, d1 = self.terminals["P1"], self.terminals["D1"]
             pts += [p1["attach"], p1["end"], p1["attach"], d1["attach"], d1["end"], d1["attach"]]
         pts += [c["C2"], c["C3"], c["C4"], park]
