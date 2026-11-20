@@ -8,8 +8,20 @@
 //    START -> leave box -> follow to P1 (J1, first RIGHT junction after C1)
 //          -> markHere(P1) -> right() into P1 -> followToEnd() (end bar)
 //          -> uTurn() -> retraceTo(P1) (stops ON the P1 junction)
-//          -> right() (= forward, north) -> follow round the loop into PARK
-//          -> park(ms) -> stop
+//          -> right() (= forward, north)
+//          -> follow to D1 (first LEFT junction) -> markHere(D1)
+//          -> left() into D1 -> followToEnd() -> uTurn() -> retraceTo(D1)
+//          -> left() (= forward, north)
+//          -> follow to P2 (next RIGHT junction) -> right() into P2
+//          -> followToEnd() -> uTurn()
+//          -> retraceTo(D1): route memory turns SOUTH at P2 by itself and
+//             stops on D1 (the drop for the P2 CORE)
+//          -> right() into D1 (heading south, D1 is on the right)
+//          -> followToEnd() -> uTurn() -> retraceTo(D1) -> left() (= north)
+//          -> follow round the loop into PARK -> park(ms) -> stop
+//
+//  20 Nov: P1 + D1 + park ran successfully on the robot (AUTO and Line Bench).
+//  P2 -> back to D1 added after that, same pattern, NOT YET RUN.
 //
 //  Terminal pattern from the NRL programming guide (SDK 1.5.0), 5.5 / 7.1:
 //    junction -> mark -> turn in -> followToEnd() -> action -> uTurn()
@@ -63,30 +75,59 @@ LineActions lineActions(drive, line, testTuning());
 enum class Op : uint8_t { LEAVE_BOX, TO_JUNCTION, MARK, RETRACE, LEFT, RIGHT,
                           UTURN, TO_END, TO_BOX, PARK_DRIVE, STOP };
 
-// Route-memory mark for the P1 junction. Must be static/global: markHere()
-// writes it and retraceTo() reads it later, while the routine runs (guide 4.3).
+// Route-memory marks, one per terminal junction. Must be static/global:
+// markHere() writes them and retraceTo() reads them later, while the routine
+// runs (guide 4.3).
 int markP1 = -1;
+int markD1 = -1;
 struct Step {
     Op op;
     LineSide side;
     int count;
     const char* name;   // shown on the Hub screen
+    int* mark;          // MARK / RETRACE: which junction mark
 };
 
 const Step STEPS[] = {
     // Robot's point of view at every junction (guide 5.2).
-    { Op::LEAVE_BOX,   LineSide::ANY,   1, "leave START" },  // #0  out of the black box
-    { Op::TO_JUNCTION, LineSide::RIGHT, 1, "to P1" },        // #1  C1 corner (auto), stop
-                                                             //     past P1, last = -RS
-    { Op::MARK,        LineSide::ANY,   1, "mark P1" },      // #2  remember this junction
-    { Op::RIGHT,       LineSide::ANY,   1, "into P1" },      // #3  branch is on the right
-    { Op::TO_END,      LineSide::ANY,   1, "to end bar" },   // #4  stops ON the bar, LR-
-    { Op::UTURN,       LineSide::ANY,   1, "U-turn" },       // #5  face back to the T
-    { Op::RETRACE,     LineSide::ANY,   1, "back to P1" },   // #6  route memory, stops on P1
-    { Op::RIGHT,       LineSide::ANY,   1, "right=north" },  // #7  heading west: north is right
-    { Op::TO_BOX,      LineSide::ANY,   1, "to PARK" },      // #8  rest of the loop
-    { Op::PARK_DRIVE,  LineSide::ANY,   1, "park" },         // #9
-    { Op::STOP,        LineSide::ANY,   1, "stop" },         // #10
+    { Op::LEAVE_BOX,   LineSide::ANY,   1, "leave START", nullptr }, // #0  out of the black box
+    // ── P1 (Pick-Up, outward = robot's RIGHT going north) — worked 20 Nov
+    { Op::TO_JUNCTION, LineSide::RIGHT, 1, "to P1",      nullptr },  // #1  C1 corner (auto), stop
+                                                                     //     past P1, last = -RS
+    { Op::MARK,        LineSide::ANY,   1, "mark P1",    &markP1 },  // #2  remember this junction
+    { Op::RIGHT,       LineSide::ANY,   1, "into P1",    nullptr },  // #3  branch is on the right
+    { Op::TO_END,      LineSide::ANY,   1, "P1 end bar", nullptr },  // #4  stops ON the bar, LR-
+    { Op::UTURN,       LineSide::ANY,   1, "P1 U-turn",  nullptr },  // #5  face back to the T
+    { Op::RETRACE,     LineSide::ANY,   1, "back to P1", &markP1 },  // #6  route memory, stops on P1
+    { Op::RIGHT,       LineSide::ANY,   1, "P1>north",   nullptr },  // #7  heading west: north is right
+    // ── D1 (Drop, inward = robot's LEFT going north) — NEW, not yet run
+    { Op::TO_JUNCTION, LineSide::LEFT,  1, "to D1",      nullptr },  // #8  next junction, stop past
+                                                                     //     D1, last = L-S
+    { Op::MARK,        LineSide::ANY,   1, "mark D1",    &markD1 },  // #9
+    { Op::LEFT,        LineSide::ANY,   1, "into D1",    nullptr },  // #10 branch is on the left
+    { Op::TO_END,      LineSide::ANY,   1, "D1 end bar", nullptr },  // #11 stops ON the bar, LR-
+    { Op::UTURN,       LineSide::ANY,   1, "D1 U-turn",  nullptr },  // #12
+    { Op::RETRACE,     LineSide::ANY,   1, "back to D1", &markD1 },  // #13 stops on D1
+    { Op::LEFT,        LineSide::ANY,   1, "D1>north",   nullptr },  // #14 heading east: north is left
+    // ── P2 (Pick-Up, robot's RIGHT going north), then back to D1 to drop
+    //    — NEW, not yet run. The guide's cargo example (5.3) also comes back
+    //    to one junction twice with one mark, turning off the route between.
+    { Op::TO_JUNCTION, LineSide::RIGHT, 1, "to P2",      nullptr },  // #15 next right junction,
+                                                                     //     last = -RS
+    { Op::RIGHT,       LineSide::ANY,   1, "into P2",    nullptr },  // #16
+    { Op::TO_END,      LineSide::ANY,   1, "P2 end bar", nullptr },  // #17 stops ON the bar, LR-
+    { Op::UTURN,       LineSide::ANY,   1, "P2 U-turn",  nullptr },  // #18
+    { Op::RETRACE,     LineSide::ANY,   1, "P2>D1",      &markD1 },  // #19 turns south at P2 by
+                                                                     //     itself, stops on D1
+    { Op::RIGHT,       LineSide::ANY,   1, "into D1 #2", nullptr },  // #20 heading south: D1 on right
+    { Op::TO_END,      LineSide::ANY,   1, "D1 end #2",  nullptr },  // #21 drop the P2 CORE here
+    { Op::UTURN,       LineSide::ANY,   1, "D1 U-turn2", nullptr },  // #22
+    { Op::RETRACE,     LineSide::ANY,   1, "back D1 #2", &markD1 },  // #23 stops on D1
+    { Op::LEFT,        LineSide::ANY,   1, "D1>north 2", nullptr },  // #24 heading east: north is left
+    // ── Park
+    { Op::TO_BOX,      LineSide::ANY,   1, "to PARK",    nullptr },  // #25 passes P2, rest of loop
+    { Op::PARK_DRIVE,  LineSide::ANY,   1, "park",       nullptr },  // #26
+    { Op::STOP,        LineSide::ANY,   1, "stop",       nullptr },  // #27
 };
 constexpr int N_STEPS = sizeof(STEPS) / sizeof(STEPS[0]);
 
@@ -99,8 +140,8 @@ ActionPtr makeAction(const Step& s, int count) {
     switch (s.op) {
         case Op::LEAVE_BOX:   return lineActions.leaveBox();
         case Op::TO_JUNCTION: return lineActions.followToJunction(s.side, count);
-        case Op::MARK:        return lineActions.markHere(&markP1);
-        case Op::RETRACE:     return lineActions.retraceTo(&markP1);
+        case Op::MARK:        return lineActions.markHere(s.mark);
+        case Op::RETRACE:     return lineActions.retraceTo(s.mark);
         case Op::LEFT:        return lineActions.left();
         case Op::RIGHT:       return lineActions.right();
         case Op::UTURN:       return lineActions.uTurn();
@@ -131,6 +172,7 @@ public:
         lineActions.resetCounts();
         lineActions.clearRoute();
         markP1 = -1;
+        markD1 = -1;
         recoveries = 0;
         backwardsFixes = 0;
         travelHeading = -999.0f;
