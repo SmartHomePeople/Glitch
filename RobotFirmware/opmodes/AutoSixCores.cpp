@@ -148,66 +148,6 @@ private:
     uint32_t _l0 = 0, _r0 = 0, _t0 = 0;
 };
 
-// ── Hard stop ON the end bar ──────────────────────────────────────────────
-// Run 3 (20 Nov): even at 0.22 it still overshot. SDK followToEnd() treats
-// the end bar like a junction: it CROSSES the whole bar, then brakes. So we
-// follow with followUntil() and end the step the moment the bar is UNDER the
-// sensors, then a hard reverse pulse and stop.
-//
-// Run 4 (20 Nov): "6 of 8 black" fired right after the turn into P1 (robot
-// braked, paused, U-turned with no end bar). An ordinary line seen at an
-// angle can darken that many channels at the array's low dark threshold
-// (sensor pitch not measured). Now the bar must darken BOTH ENDS of the
-// array AND its middle, strongly (like the SDK's own junction test, but both
-// sides at once), and the robot must have driven END_MIN_TRAVEL_M into the
-// terminal (encoders).
-// Tune: still rolls past -> raise END_BRAKE_MS / END_BRAKE_SPEED a little;
-// rocks backwards -> lower them.
-constexpr uint16_t END_DARK         = 500;    // = SDK eventThreshold
-constexpr uint8_t  END_BAR_TICKS    = 2;      // 20 ms debounce
-constexpr float    END_MIN_TRAVEL_M = 0.15f;  // terminal is 0.5 m; bar starts ~8 cm in
-constexpr float    RETURN_CLEAR_M   = 0.12f;  // after the U-turn, before looking for the T
-constexpr uint16_t END_BRAKE_MS     = 100;
-constexpr float    END_BRAKE_SPEED  = 0.45f;
-
-uint8_t  endTicks = 0;
-uint32_t endEncStart = 0;
-// What triggered the last end-bar stop, for telemetry.
-uint8_t  endMaskAtStop = 0;
-float    endTravelAtStop = 0.0f;
-
-float terminalTravelM() {
-    return 0.5f * (float)((encLeft + encRight) - endEncStart) / COUNTS_PER_M;
-}
-void resetEndBar() {
-    endTicks = 0;
-    endEncStart = encLeft + encRight;
-}
-bool dark(uint8_t ch) { return line.read(ch) >= END_DARK; }
-bool endBarSeen() {
-    if (terminalTravelM() < END_MIN_TRAVEL_M) { endTicks = 0; return false; }
-    bool leftEnd  = dark(0) || dark(1);
-    bool rightEnd = dark(6) || dark(7);
-    bool middle   = dark(3) || dark(4);
-    endTicks = (leftEnd && rightEnd && middle) ? endTicks + 1 : 0;
-    if (endTicks >= END_BAR_TICKS) {
-        endMaskAtStop = line.mask();
-        endTravelAtStop = terminalTravelM();
-        return true;
-    }
-    return false;
-}
-ActionPtr hardBrake() {
-    return sequential({
-        instant([] {
-            drive.setRampRate(1.0f);           // no ramp: full reverse at once
-            drive.drive(-END_BRAKE_SPEED, 0.0f);
-        }),
-        sleep_ms(END_BRAKE_MS),
-        instant([] { drive.stop(); }),         // line actions set their own ramp
-    });
-}
-
 // ── CORE being carried (record for telemetry and later decisions) ─────────
 enum Core : uint8_t { NONE, RED, GOLD, BLUE };
 const char* coreName(Core c) {
@@ -233,7 +173,7 @@ ActionPtr dropCore() {
 
 // ── The mission as a list of steps, grouped into legs ─────────────────────
 enum class Op : uint8_t { LEAVE_BOX, TO_JUNCTION, LEFT, RIGHT, UTURN, TO_END,
-                          LEAVE_END, TO_BOX, PICK, DROP, PARK_DRIVE, STOP };
+                          TO_BOX, PICK, DROP, PARK_DRIVE, STOP };
 enum class LegKind : uint8_t { START, PICK, DROP, PICK_DROP, PARK };
 
 struct Leg {
@@ -251,19 +191,17 @@ struct Step {
 };
 
 constexpr int MAX_LEGS  = 12;
-constexpr int MAX_STEPS = 128;   // mission uses 100
+constexpr int MAX_STEPS = 96;
 Leg  legs[MAX_LEGS];
 Step steps[MAX_STEPS];
 int  nLegs = 0, nSteps = 0;
 int  parkStep = 0;      // first step of the PARK leg
 
 int addLeg(const char* name, LegKind kind, float endPos, int cornersAfter) {
-    if (nLegs >= MAX_LEGS) return nLegs - 1;
     legs[nLegs] = Leg{ name, kind, endPos, cornersAfter };
     return nLegs++;
 }
 void add(int leg, Op op, LineSide side = LineSide::ANY, int count = 1, Core core = NONE) {
-    if (nSteps >= MAX_STEPS) return;   // never write past the array
     steps[nSteps++] = Step{ op, side, count, leg, core };
 }
 
@@ -289,7 +227,6 @@ void buildMission() {
         add(L, Op::TO_END);
         add(L, Op::PICK, LineSide::ANY, 1, CORE[s]);
         add(L, Op::UTURN);
-        add(L, Op::LEAVE_END);                // clear the end bar first
         add(L, Op::TO_JUNCTION);              // back on the main line (a T)
         add(L, Op::RIGHT);                    // forward
 
@@ -300,7 +237,6 @@ void buildMission() {
         add(L, Op::TO_END);
         add(L, Op::DROP);
         add(L, Op::UTURN);
-        add(L, Op::LEAVE_END);                // clear the end bar first
         add(L, Op::TO_JUNCTION);
         add(L, Op::LEFT);                     // forward
 
@@ -311,7 +247,6 @@ void buildMission() {
         add(L, Op::TO_END);
         add(L, Op::PICK, LineSide::ANY, 1, CORE[s]);
         add(L, Op::UTURN);
-        add(L, Op::LEAVE_END);                // clear the end bar first
         add(L, Op::TO_JUNCTION);
         add(L, Op::LEFT);                     // BACKWARD, toward D
         add(L, Op::TO_JUNCTION, LineSide::RIGHT, 1);   // D is on the right now
@@ -319,7 +254,6 @@ void buildMission() {
         add(L, Op::TO_END);
         add(L, Op::DROP);
         add(L, Op::UTURN);
-        add(L, Op::LEAVE_END);                // clear the end bar first
         add(L, Op::TO_JUNCTION);
         add(L, Op::LEFT);                     // forward again
     }
@@ -351,26 +285,12 @@ ActionPtr makeAction(const Step& s, int count) {
         case Op::RIGHT:       return lineActions.right();
         case Op::UTURN:       return lineActions.uTurn();
         case Op::TO_END:
-            // Slow tuning for the terminal, stop ON the end bar with a hard
-            // brake, normal tuning back afterwards (also after a fault: the
-            // follow step still finishes, so the restore runs).
+            // Slow tuning for the terminal, normal tuning back afterwards. The
+            // restore also runs if followToEnd() faults (it still finishes).
             return sequential({
-                instant([] { lineActions.setTuning(terminalTuning()); resetEndBar(); }),
-                lineActions.followUntil(endBarSeen),
-                hardBrake(),
+                instant([] { lineActions.setTuning(terminalTuning()); }),
+                lineActions.followToEnd(),
                 instant([] { lineActions.setTuning(missionTuning()); }),
-            });
-        case Op::LEAVE_END:
-            // Run 5 (20 Nov): after the U-turn at the D1 end bar, the follow
-            // back to the T stopped AT ONCE (a "junction" right by the end bar,
-            // J5 instead of J4), then left() rightly said NO_BRANCH. New since
-            // our own end-bar stop cut into the SDK's handling of the bar. So:
-            // follow RETURN_CLEAR_M on the encoders, passing any junction, and
-            // only then look for the T. Terminal 0.5 m; after the U-turn the
-            // sensor bar is roughly 0.3 m from the T.
-            return sequential({
-                instant([] { resetEndBar(); }),
-                lineActions.followUntil([] { return terminalTravelM() >= RETURN_CLEAR_M; }),
             });
         case Op::TO_BOX:      return lineActions.followToBox();
         case Op::PICK:        return pickCore(s.core);
@@ -389,7 +309,6 @@ const char* opName(Op op) {
         case Op::RIGHT:       return "right";
         case Op::UTURN:       return "U-turn";
         case Op::TO_END:      return "to end bar";
-        case Op::LEAVE_END:   return "clear end bar";
         case Op::TO_BOX:      return "to PARK box";
         case Op::PICK:        return "PICK";
         case Op::DROP:        return "DROP";
@@ -421,6 +340,9 @@ public:
         lineActions.clearFault();
         lineActions.resetCounts();
         lineActions.clearRoute();
+        // A run stopped inside a terminal never switched back from the slow
+        // terminal tuning; without this the next run would follow at 0.22.
+        lineActions.setTuning(missionTuning());
         encLeft = 0; encRight = 0;
         carrying = NONE;
         recoveries = 0;
@@ -499,14 +421,7 @@ public:
         telemetry.addData("fault", faultLog);
         telemetry.addData("count", counts);
         telemetry.addData("mask", maskStr);
-        // Last end-bar stop: sensors seen when it triggered + metres driven
-        // into the terminal (expect ~0.4 on a 0.5 m terminal).
-        static char endStr[24];
-        char em[9];
-        for (int i = 0; i < 8; i++) em[i] = (endMaskAtStop & (1 << i)) ? '#' : '.';
-        em[8] = 0;
-        snprintf(endStr, sizeof(endStr), "%s %.2fm", em, endTravelAtStop);
-        telemetry.addData("end", endStr);
+        telemetry.addData("carry", coreName(carrying));
         telemetry.addData("turn deg", lineActions.lastTurnDegrees());
         // Last measured leg times, seconds: A = pick, B = drop, C = pick+drop.
         // (Shows the estimates until a leg of that kind has finished.)
