@@ -1,0 +1,222 @@
+{
+ "name": "P1-D1 Run",
+ "opmode": "P1-D1 Run",
+ "status": "FAULT",
+ "telemetry": {
+  "d cm": "31",
+  "jx": "0/3 encOFF",
+  "leg": "C3 exp 192",
+  "mask": "........ 0",
+  "state": "FAULT",
+  "t": "42.00",
+  "turns": "TTGGTGTT",
+  "why": "no line"
+ },
+ "eval": {
+  "status": "FAULT",
+  "why": "no line",
+  "turns_log": "TTGGTGTT",
+  "final_leg": "C3 exp 192",
+  "time_s": 42.92,
+  "final_pose_mm_deg": [
+   1440.7,
+   2482.1,
+   -74.9
+  ],
+  "wheels_inside": 0,
+  "parked_inside": false,
+  "lateral_err_mm": 2482.1,
+  "longitudinal_err_mm": 890.7,
+  "heading_err_deg": -74.9,
+  "motors_off": true,
+  "stopped": true,
+  "max_route_dev_mm": 493.0,
+  "off_route": true,
+  "repeat_turns": 0,
+  "turns_taken": 9,
+  "incorrect_turns": [
+   {
+    "t": 8.23,
+    "at_mm": [
+     1999,
+     1490
+    ],
+    "nearest": "to D1",
+    "dist_mm": 490
+   },
+   {
+    "t": 12.12,
+    "at_mm": [
+     2310,
+     1503
+    ],
+    "nearest": "C2",
+    "dist_mm": 586
+   },
+   {
+    "t": 16.65,
+    "at_mm": [
+     2011,
+     1494
+    ],
+    "nearest": "to D1",
+    "dist_mm": 494
+   },
+   {
+    "t": 25.49,
+    "at_mm": [
+     1191,
+     1999
+    ],
+    "nearest": "C2",
+    "dist_mm": 809
+   },
+   {
+    "t": 32.19,
+    "at_mm": [
+     1488,
+     2023
+    ],
+    "nearest": "C2",
+    "dist_mm": 513
+   },
+   {
+    "t": 35.46,
+    "at_mm": [
+     1498,
+     2465
+    ],
+    "nearest": "C2",
+    "dist_mm": 684
+   },
+   {
+    "t": 39.47,
+    "at_mm": [
+     1454,
+     2492
+    ],
+    "nearest": "C2",
+    "dist_mm": 735
+   }
+  ],
+  "missed_turns": [
+   "to P1",
+   "P1 end",
+   "P1 back",
+   "to D1",
+   "D1 end",
+   "D1 back",
+   "C3",
+   "C4"
+  ],
+  "total_rotation_deg": 1178.5,
+  "longest_spin_deg": 195.1,
+  "spin_limit_deg": 300.0,
+  "excess_rotation": false,
+  "state_entries": {
+   "LEAVE BOX": 1,
+   "FOLLOW": 9,
+   "STOP": 45,
+   "VERIFY": 9,
+   "LOCATE": 7,
+   "LOCATED": 7,
+   "ADJUST": 9,
+   "TAPE TURN": 6,
+   "SQUARE CHK": 14,
+   "SQUARE": 6,
+   "BACKUP": 2,
+   "GYRO TURN": 3,
+   "CHECK": 3,
+   "CENTRE CHK": 4,
+   "CENTRE": 3,
+   "FAULT": 1
+  },
+  "recoveries": 5,
+  "fallback_reasons": [
+   "enc R off",
+   "enc off",
+   "no line",
+   "no line after squaring"
+  ],
+  "faults": 1,
+  "max_line_error": 1655,
+  "rms_line_error": 505.1,
+  "follow_m": 5.01,
+  "oscillations_per_m": 3.4,
+  "post_turn_overshoot": 1109.8,
+  "follow_entry_heading_err": 5.56,
+  "passed": false,
+  "safe_stop": false,
+  "reason": "run ended FAULT (no line); left the route by 493 mm; 7 turn(s) away from any planned turn point"
+ },
+ "params_used": {
+  "wheel_radius_m": 0.05,
+  "track_width_m": 0.316,
+  "skid_factor": 1.42,
+  "wheelbase_m": 0.2,
+  "motor_rpm": 300.0,
+  "motor_gain_l": 1.0,
+  "motor_gain_r": 1.05,
+  "thr_straight_l": 24.5,
+  "thr_straight_r": 22.5,
+  "thr_pivot_l": 29.0,
+  "thr_pivot_r": 23.0,
+  "kinetic_ratio": 0.8,
+  "tau_up_s": 0.08,
+  "tau_down_s": 0.08,
+  "tau_coast_s": 0.1,
+  "slip_long": 0.97,
+  "motor_reversed_l": 0.0,
+  "motor_reversed_r": 0.0,
+  "motor_stall_l_t": -1.0,
+  "motor_stall_r_t": -1.0,
+  "dt_s": 0.01,
+  "timeout_s": 150.0,
+  "stuck_s": 8.0,
+  "seq_chain": 0.0,
+  "sensor_fwd_m": 0.08,
+  "sensor_pitch_m": 0.01,
+  "sensor_spot_radius_m": 0.003,
+  "sensor_lateral_offset_m": 0.0,
+  "sensor_angle_deg": 0.0,
+  "sensor_dead_mask": 128.0,
+  "raw_white": 400.0,
+  "raw_black": 3000.0,
+  "raw_noise": 40.0,
+  "cal_noise": 10.0,
+  "uncalibrated": 0.0,
+  "line_dropout_per_s": 0.0,
+  "line_dropout_ms": 60.0,
+  "enc_pin_l": 37.0,
+  "enc_pin_r": 36.0,
+  "enc_cpm_l": 1250.0,
+  "enc_cpm_r": 1350.0,
+  "enc_miss_l": 0.0,
+  "enc_miss_r": 0.0,
+  "enc_spurious_hz_l": 0.0,
+  "enc_spurious_hz_r": 0.0,
+  "enc_dead_l": 0.0,
+  "enc_dead_r": 1.0,
+  "enc_dead_l_t": -1.0,
+  "enc_dead_r_t": -1.0,
+  "gyro_noise_deg": 0.05,
+  "gyro_bias_deg": 0.0,
+  "gyro_drift_dps": 0.02,
+  "gyro_scale": 1.0,
+  "gyro_ready_ms": 0.0,
+  "gyro_unavailable": 0.0,
+  "gyro_sign_flip": 0.0,
+  "gyro_jump_t": -1.0,
+  "gyro_jump_deg": 0.0,
+  "sdk_leavebox_gyro_hold": 0.0,
+  "track_eff_m": 0.44872,
+  "start_x_m": 1.45,
+  "start_y_m": 0.0,
+  "start_heading_deg": 0,
+  "field_x0_m": -0.829,
+  "field_y0_m": -0.829,
+  "field_x1_m": 2.829,
+  "field_y1_m": 2.829,
+  "seed": 1
+ }
+}

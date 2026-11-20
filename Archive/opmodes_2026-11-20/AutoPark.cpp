@@ -227,7 +227,13 @@ constexpr float SOFT_TURN     = 0.12f;        //   for up to this long, without 
 // GRID: the arena lines are all at 0/90/180/270 deg. After every turn the robot squares itself
 // to the grid with the gyro (not by twisting toward the tape, which left it crooked).
 constexpr float GRID_TOL_DEG     = 2.0f;   // square to the grid within this
-constexpr int   GRID_PASSES      = 3;      // gyro squaring passes, each ending in a full stop
+constexpr int   GRID_PASSES      = 4;      // gyro squaring nudges, each ending in a full stop
+constexpr bool  USE_SDK_LEAVEBOX = false;  // true = the SDK's leaveBox() (the old way); false = our own LEAVE
+constexpr float LEAVE_SPEED      = 0.22f;  // our LEAVE: straight out of the START box at this speed
+constexpr float LEAVE_EXTRA_M    = 0.06f;  //   ...and up to this far past the box edge looking for the line
+constexpr float LATERAL_MAX_DEG  = 10.0f;  // never twist more than this off square to reach a line at the edge
+constexpr float COAST_GUESS_M    = 0.02f;  // first guess of how far the robot coasts after an ADJUST move
+constexpr float NUDGE_MS_PER_DEG = 8.0f;   // first guess for a squaring nudge; it learns the real value
 constexpr float BRANCH_MAX_ANGLE = 12.0f;  // a branch only counts while the robot is this square to the grid
 
 // ---------------------------------------------------------------------
@@ -283,7 +289,7 @@ static const Step &step() { return plan[stepIdx < planLen ? stepIdx : planLen - 
 // ---------------------------------------------------------------------
 //  Run state machine (shared by "Park Run" and "P1-D1 Run")
 // ---------------------------------------------------------------------
-enum class St { FOLLOW, STOP, VERIFY, BACKUP, LOCATE, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, GRID_ALIGN, GRID_CHECK, CENTRE, CENTRE_CHECK, TAPE_TURN, PARK_IN, DONE, FAULT };
+enum class St { LEAVE, FOLLOW, STOP, VERIFY, BACKUP, LOCATE, POSTLOC, ROLL, GYRO_TURN, CHECK, CORRECT, SWEEP, GRID_ALIGN, GRID_CHECK, CENTRE, CENTRE_CHECK, TAPE_TURN, PARK_IN, DONE, FAULT };
 
 static St          st        = St::FOLLOW;
 static const char *why       = "-";
@@ -312,6 +318,8 @@ static float       rollFrom  = 0.0f;
 static uint32_t    detL = 0, detR = 0;            // encoder counts where the event was detected
 static uint32_t    adjL = 0, adjR = 0;            // encoder counts when the ADJUST move started
 static float       adjM = 0.0f;                   // ADJUST distance (metres, always positive)
+static int         leavePhase = 0;                // LEAVE: 0 = in the box, 1 = past its edge
+static int         detDir = 1;                    // direction the robot was moving at the detection point
 static int         adjDir = 1;                    // ADJUST direction: +1 forward, -1 backward
 static int         locPhase = 0;                  // LOCATE: -1 find the tape, 0 back off it, 1 creep onto its edge
 static bool        locCorner = false;             // LOCATE for a corner (line end) instead of a branch / T
@@ -323,6 +331,15 @@ static float       freeBefore = 0.0f;             // free heading when the curre
 static int         alignSign = 1;
 static int         gridPasses = 0;
 static float       alignStartErr = 0.0f;
+static float       nudgeMsPerDeg = NUDGE_MS_PER_DEG;   // learned: ms of turning per degree of correction
+static unsigned long nudgeMs = 0;
+static float       adjCoast = COAST_GUESS_M;          // learned coast after an ADJUST move (metres)
+static bool        coastLearn = false;
+static uint32_t    coastL0 = 0, coastR0 = 0;
+static bool        nudged = false;                      // GRID_CHECK follows a nudge
+static float       alignTarget = 0.0f;                  // grid error to aim for (0 = square)
+static bool        lateralNudge = false;                // this nudge aims the robot at a line off to one side
+static float       nudgeFrom = 0.0f;                    // grid error before that nudge
 static float       rollM     = 0.0f;
 static uint32_t    runStart  = 0;
 static St          afterStop = St::FOLLOW;       // where STOP goes once the robot is still
@@ -430,6 +447,8 @@ static void stepDone(char c)
     gridPasses = 0;
     centrePasses = 0;
     centreTarget = CENTRE_ERR;
+    alignTarget = 0.0f;
+    lateralNudge = false;
     if (freeSign != 0 && NRLComms::isHeadingReady()) stopThen(St::GRID_CHECK);
     else                                             stopThen(St::CENTRE_CHECK);
 }
@@ -482,6 +501,7 @@ static void eventSeen(bool inWindow, float roll)
     detL      = encL;               // (+ forward, - backward)
     detR      = encR;
     rememberMask();
+    detDir = 1;
     if ((inWindow || step().turnDeg > 135.0f) && NRLComms::isHeadingReady())
     {
         mode = 'G';
@@ -521,6 +541,10 @@ static void startLocate(bool corner)
 // The tape edge is under the sensor bar: from here the move is a measured distance.
 static void locateDone()
 {
+    // Direction of the creep at this moment: the robot coasts on a little after stopping, and the
+    // encoders count that coast whichever way it goes (found in the simulator: a backward coast
+    // was counted as forward, so the robot turned 10 cm short of the corner).
+    detDir = (locCorner || locPhase <= 0) ? -1 : 1;
     drive.stop();
     detL = encL;
     detR = encR;
@@ -531,7 +555,7 @@ static void locateDone()
     lastLocated   = (step().turnDeg < 135.0f);   // only 90 deg turns teach the turn position
     lastLocCorner = locCorner;
     lastLocDir    = dir;
-    verified();
+    stopThen(St::POSTLOC);        // let it come to rest, then measure from the detection point
 }
 
 // After VERIFY: roll (if this event needs it), then turn.
@@ -542,8 +566,8 @@ static void verified()
     float remaining = rollM;
     if (encOk)
     {
-        const float travelled = 0.5f * ((float)(encL - detL) + (float)(encR - detR)) / CPM;
-        remaining = rollM - travelled;
+        const float travelled = detDir * 0.5f * ((float)(encL - detL) + (float)(encR - detR)) / CPM;
+        remaining = rollM - travelled;          // signed: a backward coast adds to the move
     }
     if (fabsf(remaining) < 0.01f)
     {
@@ -583,7 +607,7 @@ static void lineEnded()
     case Ev::MAIN_LINE:          // crossed the main line
         // Before half the expected distance a lost line cannot be the bar: the line slid off the
         // array (channel 7, the right-most, is dead). Search for it instead of stopping.
-        if ((encOk && d < 0.5f * s.expM) || d < flickerUntilM) { startTapeTurn("line lost", 'W'); return; }
+        if (encOk && d < 0.5f * s.expM) { startTapeTurn("line lost", 'W'); return; }
         eventSeen(inWindow, s.ev == Ev::MAIN_LINE ? BRANCH_ROLL_M * 0.5f : -UTURN_BACK_M);
         return;
     case Ev::BRANCH_R:
@@ -608,6 +632,7 @@ static void lineEnded()
 
 // How many channels the plain line normally covers (learned while following straight).
 static float normalDark = 3.0f;
+static float normalLo = 3.0f, normalHi = 4.0f;   // left-most / right-most dark channel of the plain, centred line
 
 // True when the array shows a real branch on `side` (+1 right, -1 left).
 // A branch ADDS tape: the main line is still under the centre, the two outer channels on that
@@ -617,14 +642,25 @@ static float normalDark = 3.0f;
 // before reaching it.)
 static bool branchOn(int side)
 {
+    // A branch ADDS tape on one side while the main line stays where it is:
+    //   right branch: the dark area reaches the right edge (ch6 - ch7 is dead) and its LEFT edge is
+    //   still where the plain line's left edge normally is. A plain line that has only slid right
+    //   moves BOTH edges, so it is rejected whatever the sensor spacing.
+    //   (or: it reaches the edge and is clearly wider than the plain line, for a branch met slightly off-centre)
     const uint8_t m = line.mask();
     const int     c = line.count();
-    const bool right  = side * STEER_SIGN > 0;
-    const bool centre = (m & 0x18) != 0;                          // ch3 or ch4: main line still there
-    const bool edge   = right ? ((m & 0x60) == 0x60)              // ch5 and ch6 (ch7 is dead)
-                              : ((m & 0x03) == 0x03);             // ch0 and ch1
-    const bool wide   = c >= (int)(normalDark + 0.5f) + 2;
-    return centre && edge && wide;
+    if (m == 0) return false;
+    int lo = 0, hi = 7;
+    while (lo < 8 && !(m & (1 << lo))) lo++;
+    while (hi >= 0 && !(m & (1 << hi))) hi--;
+    bool contiguous = true;
+    for (int i = lo; i <= hi; i++) if (!(m & (1 << i))) contiguous = false;
+    if (!contiguous) return false;
+    const bool right = side * STEER_SIGN > 0;
+    const int  nLo = (int)(normalLo + 0.5f), nHi = (int)(normalHi + 0.5f);
+    const bool wideEnough = c >= (int)(normalDark + 0.5f) + 2;
+    if (right) return hi >= 6 && (lo <= nLo || wideEnough) && lo <= 4;
+    return lo == 0 && (hi >= nHi || wideEnough) && hi >= 3;
 }
 
 // A bar across the array (end bar, or the main line met at a T): much wider than the plain line.
@@ -654,13 +690,43 @@ static bool runTick()
     updateTurn();
 
     // Encoder health: counts must keep coming while we drive forward.
-    const bool driving = (st == St::FOLLOW || st == St::ROLL || st == St::PARK_IN || st == St::BACKUP);
+    const bool driving = ((st == St::LEAVE && leavePhase == 1) || st == St::FOLLOW || st == St::ROLL || st == St::PARK_IN || st == St::BACKUP);
     if (encL != seenL || encR != seenR) { seenL = encL; seenR = encR; tLastCount = now; }
     if (!driving) tLastCount = now;
     if (encOk && driving && now - tLastCount > ENC_STALL_MS) { encOk = false; why = "enc off"; }
 
     switch (st)
     {
+    case St::LEAVE:
+    {
+        // Our own leave-box: straight out until the box is behind the sensor bar, then the line
+        // must be under it. If the robot was placed a little crooked or to one side and the line
+        // is not there, search for it (both sides, limited) instead of driving on blind
+        // (found in the simulator: a start 2 cm off-centre left the line beside the bar).
+        const int c = line.count();
+        if (leavePhase == 0)
+        {
+            drive.drive(LEAVE_SPEED, 0.0f);
+            if (c <= 4 && now - tState > 150) { leavePhase = 1; startLeg(); }
+            if (now - tState > 4000) { fault("no box exit"); return true; }
+            return false;
+        }
+        if (line.onLine() && c <= 4)
+        {
+            startLeg();
+            enter(St::FOLLOW);
+            return false;
+        }
+        if (legM() > LEAVE_EXTRA_M || (!encOk && now - tState > 1200))
+        {
+            startLeg();
+            startTapeTurn("line not at box exit", 'W');
+            return false;
+        }
+        drive.drive(LEAVE_SPEED, 0.0f);
+        return false;
+    }
+
     case St::FOLLOW:
     {
         const Step &s = step();
@@ -827,6 +893,14 @@ static bool runTick()
         // Learn how wide the plain line looks (for the branch test).
         if (p == LinePattern::LINE && abs(line.error()) < 1500)
             normalDark += 0.05f * ((float)line.count() - normalDark);
+        if (p == LinePattern::LINE && abs(line.error()) < 600)
+        {
+            const uint8_t mm = line.mask();
+            int lo = 0, hi = 7;
+            while (lo < 8 && !(mm & (1 << lo))) lo++;
+            while (hi >= 0 && !(mm & (1 << hi))) hi--;
+            if (lo <= hi) { normalLo += 0.05f * ((float)lo - normalLo); normalHi += 0.05f * ((float)hi - normalHi); }
+        }
 
         // Normal gentle following.
         const float err = (float)line.error() / 3500.0f;
@@ -848,6 +922,13 @@ static bool runTick()
         if (still || now - tState >= SETTLE_MAX_MS)
         {
             const St next = afterStop;
+            if (coastLearn)                                // how far did it coast after ADJUST?
+            {
+                coastLearn = false;
+                float c = 0.5f * ((float)(encL - coastL0) + (float)(encR - coastR0)) / CPM;
+                if (c > 0.06f) c = 0.06f;
+                adjCoast = 0.5f * adjCoast + 0.5f * c;
+            }
             if (next == St::ROLL) rollFrom = legM();
             if (next == St::GYRO_TURN || next == St::TAPE_TURN)
             {
@@ -872,7 +953,8 @@ static bool runTick()
             else notConfirmed("not a corner");                 // line is back: it was a gap
             return false;
         case Ev::END_BAR:
-            if (wide || !line.onLine()) verified();            // on the bar, or just past it
+            // On the bar, just past it, or stopped on its edge (wider than the plain line)
+            if (wide || !line.onLine() || line.count() >= (int)(normalDark + 0.5f) + 2) verified();
             else notConfirmed("no bar");
             return false;
         case Ev::MAIN_LINE:
@@ -905,6 +987,7 @@ static bool runTick()
         {
             drive.stop();
             detL = encL;                                       // the branch is here (fallback point)
+            detDir = -1;
             detR = encR;
             startLocate(false);
             return false;
@@ -964,15 +1047,49 @@ static bool runTick()
         return false;
     }
 
+    case St::POSTLOC:
+        verified();                               // robot is still now
+        return false;
+
     case St::GRID_CHECK:
     {
         // Robot is still. Square to the grid with the gyro (up to GRID_PASSES slow passes).
-        const float e = gridErr();
+        const float e = gridErr() - alignTarget;
+        // Learn how much a nudge turns the robot (it coasts, so this beats driving to a target).
+        if (nudged)
+        {
+            nudged = false;
+            const float achieved = fabsf(nudgeFrom - e);
+            if (achieved > 0.5f)
+            {
+                float k = nudgeMsPerDeg * fabsf(nudgeFrom) / achieved;
+                if (k < 2.0f)  k = 2.0f;
+                if (k > 30.0f) k = 30.0f;
+                nudgeMsPerDeg = 0.5f * nudgeMsPerDeg + 0.5f * k;
+            }
+        }
+        if (lateralNudge)                                      // aimed at the line: drive now
+        {
+            lateralNudge = false;
+            alignTarget = 0.0f;
+            if (line.onLine()) { startLeg(); enter(St::FOLLOW); return false; }
+            centreTarget = CENTRE_ERR;
+            why = "no line after aiming";
+            enter(St::CENTRE_CHECK);
+            return false;
+        }
         if (fabsf(e) > GRID_TOL_DEG && gridPasses < GRID_PASSES && fabsf(e) < 45.0f)
         {
+            // One timed nudge sized to the error (no driving until the gyro says stop: the robot
+            // coasts several degrees, which made the squaring hunt back and forth).
             gridPasses++;
             alignSign = (e > 0.0f) ? 1 : -1;
             alignStartErr = fabsf(e);
+            nudgeFrom = e;
+            float ms = fabsf(e) * nudgeMsPerDeg;
+            if (ms < 30.0f)  ms = 30.0f;
+            if (ms > 600.0f) ms = 600.0f;
+            nudgeMs = (unsigned long)ms;
             enter(St::GRID_ALIGN);
             return false;
         }
@@ -993,12 +1110,22 @@ static bool runTick()
             lastLocated = false;
         }
         if (line.onLine() && abs(line.error()) > LATERAL_MAX)  // square but line near an edge:
-        {                                                      // twist toward it a little first
-            centreTarget = LATERAL_OK;
-            centrePasses = 0;
-            centreDir = (line.error() > 0) ? STEER_SIGN : -STEER_SIGN;
-            centreFlipped = false;
-            enter(St::CENTRE);
+        {                                                      // aim at it with ONE gyro nudge
+            const float lat = (float)line.error() / 1000.0f * SENSOR_PITCH_M;          // + = line right
+            float a = atan2f(fabsf(lat), PIVOT_FWD_M) * 57.2958f;
+            if (a > LATERAL_MAX_DEG) a = LATERAL_MAX_DEG;
+            const int toward = (line.error() > 0) ? STEER_SIGN : -STEER_SIGN;            // +1 = turn right
+            alignTarget  = freeSign * toward * a;
+            lateralNudge = true;
+            const float e2 = gridErr() - alignTarget;
+            alignSign = (e2 > 0.0f) ? 1 : -1;
+            alignStartErr = fabsf(e2);
+            nudgeFrom = e2;
+            float ms = fabsf(e2) * nudgeMsPerDeg;
+            if (ms < 30.0f)  ms = 30.0f;
+            if (ms > 600.0f) ms = 600.0f;
+            nudgeMs = (unsigned long)ms;
+            enter(St::GRID_ALIGN);
             return false;
         }
         if (line.onLine())                                     // square and on the tape: go
@@ -1015,7 +1142,7 @@ static bool runTick()
 
     case St::GRID_ALIGN:
     {
-        const float e = gridErr();
+        const float e = gridErr() - alignTarget;
         const int eSign = (e > 0.0f) ? 1 : -1;
         if (fabsf(e) > alignStartErr + 5.0f)                   // getting worse: wrong way, stop using the grid
         {
@@ -1024,8 +1151,9 @@ static bool runTick()
             stopThen(St::CENTRE_CHECK);
             return false;
         }
-        if (fabsf(e) <= GRID_TOL_DEG * 0.5f || eSign != alignSign || now - tState > 2000)
+        if (now - tState >= nudgeMs || eSign != alignSign)
         {
+            nudged = true;
             stopThen(St::GRID_CHECK);
             return false;
         }
@@ -1038,12 +1166,17 @@ static bool runTick()
         // ADJUST: move forward or backward to the turning spot.
         drive.drive(adjDir * ROLL_SPEED, 0.0f);
         const float moved = 0.5f * ((float)(encL - adjL) + (float)(encR - adjR)) / CPM;
-        const bool done = encOk ? (moved >= adjM)
+        // Stop early by the coast the robot is known to add (found in the simulator: it coasted
+        // 2-4 cm past the turning spot, so the new line landed off to one side).
+        const bool done = encOk ? (moved >= adjM - adjCoast)
                                 : (now - tState >= (adjDir > 0 ? ROLL_MS : UTURN_BACK_MS));
         if (done || now - tState > 2500)
         {
             if (mode == 'G') stopThen(St::GYRO_TURN);
             else             stopThen(St::TAPE_TURN);
+            coastLearn = encOk;
+            coastL0 = encL;
+            coastR0 = encR;
         }
         return false;
     }
@@ -1153,8 +1286,10 @@ static bool runTick()
         }
         const int err = line.error();
         const int errDir = (err > 0) ? STEER_SIGN : -STEER_SIGN;
-        if (abs(err) <= centreTarget || errDir != centreDir || now - tState > CENTRE_MAX_MS)
+        const bool twistLimit = (centreTarget == LATERAL_OK) && freeSign != 0 && fabsf(gridErr()) > LATERAL_MAX_DEG;
+        if (abs(err) <= centreTarget || errDir != centreDir || twistLimit || now - tState > CENTRE_MAX_MS)
         {
+            if (twistLimit) centrePasses = CENTRE_PASSES;  // enough twisting: drive, the follower does the rest
             stopThen(St::CENTRE_CHECK);
             return false;
         }
@@ -1229,11 +1364,13 @@ static const char *stateName()
 {
     switch (st)
     {
+    case St::LEAVE:     return "LEAVE BOX";
     case St::FOLLOW:    return "FOLLOW";
     case St::STOP:      return "STOP";
     case St::VERIFY:    return "VERIFY";
     case St::BACKUP:    return "BACKUP";
     case St::LOCATE:    return "LOCATE";
+    case St::POSTLOC:   return "LOCATED";
     case St::GRID_ALIGN: return "SQUARE";
     case St::GRID_CHECK: return "SQUARE CHK";
     case St::ROLL:      return "ADJUST";
@@ -1304,18 +1441,34 @@ public:
         runStart = millis();
         tLastCount = runStart;
         normalDark = 3.0f;
+        normalLo = 3.0f; normalHi = 4.0f;
         lastMaskStr[0] = '-'; lastMaskStr[1] = 0;
 
-        runAction(sequential({
-            lineActions.leaveBox(),                                     // SDK: straight out of the box
-            instant([] {
-                if (lineActions.fault() != LineFault::NONE) { fault(lineActions.faultName()); return; }
-                drive.setRampRate(RAMP_RATE);
-                startLeg();
-                enter(St::FOLLOW);
-            }),
-            wait_until([] { return runTick(); }),
-        }));
+        if (USE_SDK_LEAVEBOX)
+        {
+            runAction(sequential({
+                lineActions.leaveBox(),                                 // SDK: straight out of the box
+                instant([] {
+                    if (lineActions.fault() != LineFault::NONE) { fault(lineActions.faultName()); return; }
+                    drive.setRampRate(RAMP_RATE);
+                    startLeg();
+                    enter(St::FOLLOW);
+                }),
+                wait_until([] { return runTick(); }),
+            }));
+        }
+        else
+        {
+            runAction(sequential({
+                instant([] {
+                    drive.setRampRate(RAMP_RATE);
+                    leavePhase = 0;
+                    startLeg();
+                    enter(St::LEAVE);
+                }),
+                wait_until([] { return runTick(); }),
+            }));
+        }
     }
 
     void loop() override
@@ -1466,5 +1619,5 @@ protected:
 
 REGISTER_OPMODE(ParkRun,       "Park Run",       AUTO);
 REGISTER_OPMODE(P1D1Run,       "P1-D1 Run",      AUTO);
-REGISTER_OPMODE(ParkRunTape,   "Park Run Tape",  AUTO);
-REGISTER_OPMODE(FirstJunction, "First Junction", AUTO);
+// REGISTER_OPMODE(ParkRunTape,   "Park Run Tape",  AUTO);
+// REGISTER_OPMODE(FirstJunction, "First Junction", AUTO);
